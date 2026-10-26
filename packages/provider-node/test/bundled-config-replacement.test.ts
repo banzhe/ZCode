@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, expect, it, vi } from "vitest";
 import { materializeZCodeBuiltinProviderConfig } from "../src/index.js";
 import * as persistence from "@zcode/shared/node";
@@ -65,11 +66,14 @@ it("替换期间并发读取只见完整旧版或新版，不产生 hash 历史�
       finished = true;
     }
   })();
+  // 真实读者不会紧循环持有目标文件；Windows 上紧循环 readFile 会让 rename 持续遇到 EPERM。
+  // 每次读取后让出一小段时间，仍保证读到的必须是完整旧版或新版。
   const reader = (async () => {
     do {
       const fileContent = JSON.parse(await readFile(file, "utf8"));
       expect([1, 2]).toContain(fileContent.revision);
       expect(fileContent).toEqual(JSON.parse(release(fileContent.revision)));
+      await sleep(5);
     } while (!finished);
   })();
   await Promise.all([writer, reader]);

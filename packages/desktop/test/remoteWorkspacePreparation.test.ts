@@ -15,12 +15,13 @@ const fileService = createFileService();
 describe.each([null, 0o000, 0o400, 0o100])(
   "远程工作区目录 admission，权限 %s（null 为删除）",
   (permissions) => {
-    it.each(["manual", "automatic"] as const)(
+    // 权限位在 Windows 与 root 下不生效，仅删除场景可在这些环境运行；
+    // 必须在注册阶段选择 skip，vitest 的 it.each 回调不提供 context.skip。
+    const cannotEnforceMode = process.platform === "win32" || process.getuid?.() === 0;
+    const itForPermission = permissions !== null && cannotEnforceMode ? it.skip : it;
+    itForPermission.each(["manual", "automatic"] as const)(
       "%s：单个目录失效只拒绝该项目，修复后可以重连",
-      async (mode, context) => {
-        if (permissions !== null && (process.platform === "win32" || process.getuid?.() === 0)) {
-          context.skip();
-        }
+      async (mode) => {
         const root = await realpath(await mkdtemp(join(tmpdir(), "zcode-workspace-admission-")));
         const paths = [1, 2, 3].map((n) => join(root, `workspace-${n}`));
         const closedListeners = new Set<
