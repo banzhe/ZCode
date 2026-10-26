@@ -7,6 +7,7 @@ import type {
 } from "@/lib/providerSettingsFormTypes.js";
 import {
   resolvePendingProviderDraftSave,
+  resolveProviderRequestBodyZstdSave,
   type ProviderDraftValues,
 } from "@/settings/model-provider-section/ProviderDraftSave.js";
 import {
@@ -776,5 +777,50 @@ describe("Model metadata uses formal Model Config", () => {
         },
       }),
     ).toEqual({ status: "invalid", field: "contextWindow" });
+  });
+});
+
+describe("请求体 zstd 开关保存", () => {
+  it("开启时只写 api.requestBodyZstd 叶子，保留隐藏 headers 与 baseUrl", () => {
+    const provider = createProvider();
+    const next = resolveProviderRequestBodyZstdSave({ provider, enabled: true });
+
+    expect(next).not.toBeNull();
+    expect(next?.config.api).toEqual({
+      type: "anthropic-messages",
+      baseUrl: "https://old.example.com/v1",
+      headers: { "x-old": "remove-on-edit" },
+      requestBodyZstd: true,
+    });
+    expect(next?.personalConfig.api).toMatchObject({ requestBodyZstd: true });
+    // 只改开关：access、模型列表等其它配置保持原引用，不被重建。
+    expect(next?.config.access).toBe(provider.config.access);
+    expect(next?.config.personalModelIds).toBe(provider.config.personalModelIds);
+  });
+
+  it("已是目标值时返回 null，不触发保存", () => {
+    const provider = createProvider();
+    expect(resolveProviderRequestBodyZstdSave({ provider, enabled: false })).toBeNull();
+
+    const enabled = createProvider({
+      config: {
+        ...createProvider().config,
+        api: { ...createProvider().config.api, requestBodyZstd: true },
+      },
+    });
+    expect(resolveProviderRequestBodyZstdSave({ provider: enabled, enabled: true })).toBeNull();
+  });
+
+  it("关闭时把已开启的值写回 false，而不是删除该键", () => {
+    const enabled = createProvider({
+      config: {
+        ...createProvider().config,
+        api: { ...createProvider().config.api, requestBodyZstd: true },
+      },
+    });
+    const next = resolveProviderRequestBodyZstdSave({ provider: enabled, enabled: false });
+
+    expect(next?.config.api?.requestBodyZstd).toBe(false);
+    expect(next?.config.api?.headers).toEqual({ "x-old": "remove-on-edit" });
   });
 });

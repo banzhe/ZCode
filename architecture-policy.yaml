@@ -732,6 +732,18 @@ modules:
     layers:
       ui: .
     owner: conversation
+  # model-request-body-zstd：由 architecture:adopt 登记
+  - id: model-request-body-zstd
+    roots:
+      - apps/zcode-cli/packages/adapters/src/model/request-body-zstd
+    managed: true
+    requires: []
+    publicEntrypoints:
+      - apps/zcode-cli/packages/adapters/src/model/request-body-zstd/request-body-zstd-fetch.ts
+      - apps/zcode-cli/packages/adapters/src/model/request-body-zstd/contract.ts
+    layers:
+      adapters: .
+    owner: model
 
 global:
   # 临时时间戳（2026-09-10）：unmanaged-new-file 只约束此日期之后首次入库的文件。

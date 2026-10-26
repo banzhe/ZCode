@@ -68,6 +68,8 @@ export const completeProviderApiDataSchema = z
     type: providerApiTypeDataSchema,
     baseUrl: nonBlankRequiredString.pipe(z.string().url()),
     headers: z.record(z.string(), z.string()).readonly().nullable().optional(),
+    // 缺省等同关闭；开启后模型请求体以 zstd 压缩发送，见 model/http-proxy.md。
+    requestBodyZstd: z.boolean().optional(),
   })
   .strict();
 export const providerApiDataSchema = z

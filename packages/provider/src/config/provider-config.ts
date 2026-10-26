@@ -132,12 +132,14 @@ export class ProviderApiConfig extends ConfigOverlay<ProviderApiConfig> {
   readonly type?: ProviderApiConfigInput["type"];
   readonly baseUrl?: ProviderApiConfigInput["baseUrl"];
   readonly headers?: ProviderApiConfigInput["headers"];
+  readonly requestBodyZstd?: ProviderApiConfigInput["requestBodyZstd"];
 
   constructor(input: ProviderApiConfigInput = {}) {
     super();
     this.type = input.type;
     this.baseUrl = input.baseUrl;
     this.headers = input.headers ? Object.freeze({ ...input.headers }) : input.headers;
+    this.requestBodyZstd = input.requestBodyZstd;
     Object.freeze(this);
   }
 
@@ -146,6 +148,7 @@ export class ProviderApiConfig extends ConfigOverlay<ProviderApiConfig> {
       type: this.overlayValue(this.type, next.type),
       baseUrl: this.overlayValue(this.baseUrl, next.baseUrl),
       headers: this.overlayValue(this.headers, next.headers),
+      requestBodyZstd: this.overlayValue(this.requestBodyZstd, next.requestBodyZstd),
     });
   }
 
@@ -159,6 +162,7 @@ export class ProviderApiConfig extends ConfigOverlay<ProviderApiConfig> {
       type: this.type,
       baseUrl: this.baseUrl,
       headers: this.headers,
+      requestBodyZstd: this.requestBodyZstd,
     });
   }
 }

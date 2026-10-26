@@ -17,7 +17,11 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Switch } from "@/components/ui/switch.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
-import { resolvePendingProviderDraftSave, type ProviderDraftValues } from "./ProviderDraftSave.js";
+import {
+  resolvePendingProviderDraftSave,
+  resolveProviderRequestBodyZstdSave,
+  type ProviderDraftValues,
+} from "./ProviderDraftSave.js";
 import {
   ProviderApiKeySection,
   ProviderCardHeader,
@@ -194,6 +198,7 @@ export function InlineEditableProviderCard({
   const [apiKeyValue, setApiKeyValue] = useState(getProviderFormApiKey(provider));
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [savingEnabled, setSavingEnabled] = useState(false);
+  const [savingRequestBodyZstd, setSavingRequestBodyZstd] = useState(false);
   const authoritativeModels = useMemo(
     () => resolveVisibleProviderModelsForEdit(provider),
     [provider],
@@ -465,6 +470,33 @@ export function InlineEditableProviderCard({
       // 统一保存入口已记录错误及可重试反馈；不乐观覆盖权威 enabled。
     } finally {
       setSavingEnabled(false);
+    }
+  };
+
+  const handleRequestBodyZstdChange = async (enabled: boolean) => {
+    if (savingRequestBodyZstd) return;
+    cancelIdleDraftSave();
+    setSavingRequestBodyZstd(true);
+    // 与 provider 开关一致：先把未提交的连接草稿并入同一次保存，避免覆盖刚输入的地址或 Key。
+    const pendingDraft =
+      resolvePendingProviderDraftSave({
+        provider,
+        draft: draftRef.current,
+        readOnlyEndpoints,
+        now: Date.now,
+      }) ?? provider;
+    const nextProvider = resolveProviderRequestBodyZstdSave({
+      provider: pendingDraft,
+      enabled,
+    });
+    try {
+      if (nextProvider) {
+        await saveProviderWithCleanupGuard(nextProvider);
+      }
+    } catch {
+      // 统一保存入口已记录错误；不乐观覆盖权威配置。
+    } finally {
+      setSavingRequestBodyZstd(false);
     }
   };
 
@@ -823,6 +855,8 @@ export function InlineEditableProviderCard({
             onBaseUrlKeyDown={handleTextCommitKeyDown}
             onBaseUrlCompositionStart={handleTechnicalInputCompositionStart}
             onBaseUrlCompositionEnd={handleTechnicalInputCompositionEnd}
+            onRequestBodyZstdChange={handleRequestBodyZstdChange}
+            requestBodyZstdSaving={savingRequestBodyZstd}
           />
         )}
 

@@ -3536,6 +3536,9 @@ const zhCN: Record<string, string> = {
   "settings.modelProvider.readOnlyField": "{field}（只读）",
   "settings.modelProvider.endpointPath": "接口路径：{format}",
   "settings.modelProvider.apiFormat": "API 格式",
+  "settings.modelProvider.requestBodyZstd": "请求体 zstd 压缩",
+  "settings.modelProvider.requestBodyZstdDescription":
+    "发送模型请求时以 zstd 压缩请求体。仅在服务端支持 Content-Encoding: zstd 时开启。",
   "settings.modelProvider.apiFormat.chatCompletions": "Chat Completions (/v1/chat/completions)",
   "settings.modelProvider.apiFormat.responses": "Responses (/responses)",
   "settings.modelProvider.apiFormat.anthropicMessages":

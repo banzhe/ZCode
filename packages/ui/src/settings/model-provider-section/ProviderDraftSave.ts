@@ -30,6 +30,33 @@ function normalizeConfiguredBaseUrl(value: string): string {
   }
 }
 
+/**
+ * 请求体 zstd 开关只改 `api.requestBodyZstd` 这一叶子，在 provider 原基线上应用，
+ * 不重建 `api`，以免删除隐藏的 headers 或物化继承字段（同 resolvePendingProviderDraftSave）。
+ */
+export function resolveProviderRequestBodyZstdSave({
+  provider,
+  enabled,
+}: {
+  provider: ProviderSettingsFormProvider;
+  enabled: boolean;
+}): ProviderSettingsFormProvider | null {
+  const current = provider.config.api?.requestBodyZstd === true;
+  if (current === enabled) return null;
+
+  return {
+    ...provider,
+    config: {
+      ...provider.config,
+      api: { ...provider.config.api, requestBodyZstd: enabled },
+    },
+    personalConfig: {
+      ...provider.personalConfig,
+      api: { ...provider.personalConfig.api, requestBodyZstd: enabled },
+    },
+  };
+}
+
 export function resolvePendingProviderDraftSave({
   provider,
   draft,

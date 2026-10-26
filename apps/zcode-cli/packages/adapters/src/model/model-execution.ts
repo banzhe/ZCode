@@ -26,6 +26,7 @@ import { createAnthropicCompatFetch } from "./anthropic-stream-compat.js";
 import { createModelRequestSecurityState } from "./request-security-edition/index.js";
 import type { ModelRequestSecurityState, ModelRequestSecurityPort } from "./request-security.js";
 import { createOpenAIResponsesJsonCompatFetch } from "./openai-responses-json-compat.js";
+import { createRequestBodyZstdFetch } from "./request-body-zstd/request-body-zstd-fetch.js";
 import { createModelOptionMapFetch, type RawRequestBodyCapture } from "./model-option-map-fetch.js";
 import { createNetworkProxyFetch } from "../network/proxy-fetch.js";
 import { createProviderEndpointRoutingFetch } from "./provider-endpoint-routing-fetch.js";
@@ -46,6 +47,8 @@ interface AiSdkProviderConfig {
   apiKey?: string;
   baseURL: string;
   headers?: Record<string, string>;
+  /** Provider 静态事实：开启后模型请求体以 zstd 压缩，见 model/http-proxy.md。 */
+  requestBodyZstd?: boolean;
   providerOptions?: Record<string, unknown>;
   name?: string;
 }
@@ -298,8 +301,12 @@ export class AiSdkModelExecution {
       providerConfig,
       transport: providerTransport,
     });
+    // 压缩位于签名/网络 transport 之外，签名与抓包看到的仍是压缩前的 JSON 语义（见 model/http-proxy.md）。
+    const bodyTransport = providerConfig.requestBodyZstd
+      ? createRequestBodyZstdFetch(requestTransport)
+      : requestTransport;
     const fetch = createProviderBusinessErrorFetch({
-      fetch: requestTransport,
+      fetch: bodyTransport,
       providerId,
       providerKind: providerConfig.kind,
     });
@@ -390,6 +397,7 @@ function toAiSdkProviderConfig(
       : {}),
     baseURL: config.api.baseUrl,
     ...(config.api.headers ? { headers: { ...config.api.headers } } : {}),
+    requestBodyZstd: config.api.requestBodyZstd === true,
     providerOptions: { apiFormat: config.api.type },
     access: config.access,
   };

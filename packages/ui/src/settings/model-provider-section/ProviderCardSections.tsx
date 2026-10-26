@@ -25,6 +25,7 @@ import {
 import { InfoIcon, LockKeyholeIcon, Plus, Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
+import { Switch } from "@/components/ui/switch.js";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -195,6 +196,8 @@ export function ProviderConnectionSection({
   onBaseUrlKeyDown,
   onBaseUrlCompositionStart,
   onBaseUrlCompositionEnd,
+  onRequestBodyZstdChange,
+  requestBodyZstdSaving,
 }: {
   provider: ProviderSettingsFormProvider;
   readOnly?: boolean;
@@ -206,6 +209,9 @@ export function ProviderConnectionSection({
   onBaseUrlKeyDown?: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
   onBaseUrlCompositionStart?: () => void;
   onBaseUrlCompositionEnd?: () => void;
+  /** 仅可编辑的 API 类 Provider 传入；缺省时不渲染请求体压缩开关。 */
+  onRequestBodyZstdChange?: (enabled: boolean) => void;
+  requestBodyZstdSaving?: boolean;
 }) {
   const { intl } = useZCodeIntl();
   const showApiFormat = shouldShowProviderApiFormat(provider);
@@ -276,6 +282,28 @@ export function ProviderConnectionSection({
             {intl.formatMessage({ id: "settings.modelProvider.apiFormat" })}
           </label>
           <ProviderApiFormatSelect value={apiFormat} onChange={onApiFormatChange} />
+        </div>
+      ) : null}
+      {onRequestBodyZstdChange ? (
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <label
+              htmlFor={`${provider.providerId}-request-body-zstd`}
+              className="block text-ui-base text-foreground"
+            >
+              {intl.formatMessage({ id: "settings.modelProvider.requestBodyZstd" })}
+            </label>
+            <p className="text-ui-sm text-foreground-subtle">
+              {intl.formatMessage({ id: "settings.modelProvider.requestBodyZstdDescription" })}
+            </p>
+          </div>
+          <Switch
+            id={`${provider.providerId}-request-body-zstd`}
+            data-testid="model-provider-request-body-zstd-switch"
+            checked={provider.config.api?.requestBodyZstd === true}
+            disabled={requestBodyZstdSaving}
+            onCheckedChange={onRequestBodyZstdChange}
+          />
         </div>
       ) : null}
     </>

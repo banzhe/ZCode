@@ -41,6 +41,17 @@ No Proxy 对以上代理来源都生效，支持 `*`、精确 host、host:port�
 
 子进程代理与证书环境先恢复用户 shell 网络变量，再由显式网络策略覆盖同类目标。如果命中 `network.httpProxy`、`AppSettings.httpProxy` 或 `ZCODE_HTTP_PROXY`，adapter 会补齐 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 及小写形式；如果命中 `network.noProxy`、`AppSettings.httpProxyNoProxy` 或 `ZCODE_NO_PROXY`，adapter 会补齐 `NO_PROXY` 与 `no_proxy`；如果命中 `network.caCertFile`、`AppSettings.httpProxyCaCertPath` 或 `ZCODE_AGENT_CA_CERT`，adapter 会补齐 `NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE` 和 `GIT_SSL_CAINFO`，提升 Node、OpenSSL/curl、Python requests 和 git 的一致性。`env.base: "empty"` 的命令不恢复用户 shell passthrough，只保留显式网络配置和命令级 overlay。
 
+## Provider 请求体 zstd 压缩
+
+Provider 配置的 `api` 对象新增可选布尔字段 `requestBodyZstd`，默认关闭（缺省等同 `false`）。
+
+- 字段属于 Provider 静态事实：与 `baseUrl`、`headers` 同层，随 provider 配置持久化、导出，并在 Model 创建时冻结到 binding 中；请求期鉴权不得改写它。
+- 开启后，每个模型 provider 请求（流式与非流式的 chat / responses / messages）的请求体在发送前压缩为 zstd，并设置 `content-encoding: zstd`；压缩后的 `content-length` 以压缩后字节数为准。
+- 压缩位于 Option Map 改写之后、网络 transport 之前，签名、鉴权头与 `RawRequestBodyCapture` 记录的都是压缩前的 JSON 语义。
+- 只压缩有请求体的方法；`GET` / `HEAD` 不压缩。
+- 关闭时请求保持原样，不得残留 `content-encoding`。
+- 该功能不做服务端能力探测。服务端不支持 `Content-Encoding: zstd` 时请求会失败，由用户在确认服务端支持后手动开启；失败按普通 provider HTTP 错误处理，不自动回退为未压缩请求。
+
 ## 行为
 
 - 代理解析逻辑由 adapter 统一实现，并同时服务模型请求与 `HttpClientPort`。
@@ -84,3 +95,4 @@ No Proxy 对以上代理来源都生效，支持 `*`、精确 host、host:port�
 - stdio MCP server 能继承统一网络环境，HTTP/SSE MCP transport 能获得 proxy-aware fetch。
 - 走代理时上游回 `999` / `204` / `304`：`HttpClientPort` 带回原状态码（204 / 304 正文为空）；proxy-aware fetch 对 204 / 304 返回空正文的 `Response`，对 `999` 以 `ZCODE_UNSUPPORTED_HTTP_STATUS` 失败；两者都不产生 uncaughtException（`packages/adapters/tests/http-response-status.test.ts`）。
 - 架构测试扫描进程内源码，防止新增直接 HTTP 出口绕过统一网络边界。
+- `requestBodyZstd` 缺省或 `false` 时请求体与请求头保持原样；开启后请求体可被 `zlib.zstdDecompressSync` 还原为原 JSON，`content-encoding: zstd` 与压缩后 `content-length` 正确，`GET` 不压缩，签名与 `RawRequestBodyCapture` 记录压缩前语义。

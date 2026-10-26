@@ -3787,6 +3787,9 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.readOnlyField": "{field} (read only)",
   "settings.modelProvider.endpointPath": "Endpoint path: {format}",
   "settings.modelProvider.apiFormat": "API format",
+  "settings.modelProvider.requestBodyZstd": "Compress request body with zstd",
+  "settings.modelProvider.requestBodyZstdDescription":
+    "Compress model request bodies with zstd. Enable only if the server supports Content-Encoding: zstd.",
   "settings.modelProvider.apiFormat.chatCompletions": "Chat completions (/v1/chat/completions)",
   "settings.modelProvider.apiFormat.responses": "Responses (/responses)",
   "settings.modelProvider.apiFormat.anthropicMessages":

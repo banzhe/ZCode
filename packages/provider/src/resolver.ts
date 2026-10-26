@@ -61,6 +61,9 @@ export function serializeRegistryProviderConfig(
       type: config.api.type,
       baseUrl: config.api.baseUrl,
       ...(config.api.headers == null ? {} : { headers: config.api.headers }),
+      ...(config.api.requestBodyZstd === undefined
+        ? {}
+        : { requestBodyZstd: config.api.requestBodyZstd }),
     },
     ...(config.builtinModelIds == null ? {} : { builtinModelIds: [...config.builtinModelIds] }),
     ...(config.personalModelIds == null ? {} : { personalModelIds: [...config.personalModelIds] }),

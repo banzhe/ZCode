@@ -162,3 +162,59 @@ describe("Provider 数据校验与完整性使用同一合同", () => {
     expect(original.access?.toJSON()).toEqual(access.toJSON());
   });
 });
+
+describe("Provider requestBodyZstd 配置合同", () => {
+  const completeApi = { type: "anthropic-messages", baseUrl: "https://example.test/anthropic" };
+
+  it("缺省时不出现在序列化结果中，Registry 投影保持原样", () => {
+    const config = parseProviderConfig({
+      group: "standard-personal",
+      access: access.toJSON(),
+      api: completeApi,
+    });
+    expect(config.api?.toJSON()).not.toHaveProperty("requestBodyZstd");
+    const registry = createRegistryProviderConfig(config);
+    if (!registry.ok) throw new Error("fixture must be complete");
+    expect(serializeRegistryProviderConfig(registry.config).api).not.toHaveProperty(
+      "requestBodyZstd",
+    );
+  });
+
+  it("开启后随 api 持久化并在 Registry 序列化中保留", () => {
+    const config = parseProviderConfig({
+      group: "standard-personal",
+      access: access.toJSON(),
+      api: { ...completeApi, requestBodyZstd: true },
+    });
+    expect(config.api?.toJSON()).toMatchObject({ requestBodyZstd: true });
+    const registry = createRegistryProviderConfig(config);
+    if (!registry.ok) throw new Error("fixture must be complete");
+    expect(serializeRegistryProviderConfig(registry.config).api).toMatchObject({
+      requestBodyZstd: true,
+    });
+  });
+
+  it("overlay 只改写该叶子，不影响 headers 等同层字段", () => {
+    const base = parseProviderConfig({
+      group: "standard-personal",
+      access: access.toJSON(),
+      api: { ...completeApi, headers: { "X-Client": "keep" } },
+    });
+    const enabled = base.overlay(parseProviderConfig({ api: { requestBodyZstd: true } }));
+    expect(enabled.api?.toJSON()).toMatchObject({
+      requestBodyZstd: true,
+      headers: { "X-Client": "keep" },
+    });
+    expect(base.api?.toJSON()).not.toHaveProperty("requestBodyZstd");
+  });
+
+  it("拒绝非布尔值", () => {
+    expect(() =>
+      parseProviderConfig({
+        group: "standard-personal",
+        access: access.toJSON(),
+        api: { ...completeApi, requestBodyZstd: "yes" },
+      }),
+    ).toThrow();
+  });
+});
