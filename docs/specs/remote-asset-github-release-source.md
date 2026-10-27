@@ -2,13 +2,18 @@
 
 ## 背景
 
-Fork 仓库（如 `banzhe/ZCode`）的 `release-on-push.yml` 只把 Windows 安装包发布到 GitHub Release，
-remote assets（Source Server descriptor/archive）没有发布渠道：打包应用的
-`ZCODE_VERSION` 是 CI stamp 出的 `<base>-build.<stamp>`（如 `3.16.2-build.20261027112643`），
-官方 CDN 上不存在该版本目录，所有 descriptor 请求 404，导致 SSH/WSL/docker 连接
-在 "Unable to resolve Source Server release descriptor" 处失败。
+Fork 仓库（如 `banzhe/ZCode`）的 `release-on-push.yml` 把 Windows 安装包与 remote assets
+（`source-server-release.json` + 4 个平台 archive）一起发布到同一个 GitHub Release。
+打包应用的 `ZCODE_VERSION` 是 CI stamp 出的 `<base>-build.<stamp>`
+（如 `3.16.2-build.20261027112643`），官方 CDN 上不存在该版本目录。
 
-本 spec 定义：GitHub Release 作为 remote assets 的补充下载源。
+但该工作流不注入 `ZCODE_ENV`，构建落回 test 产品环境（Preview 身份）：桌面端的 remote asset
+候选只剩内网占位根 `http://intranet.example.invalid:12345/ssh-remote-assets/<version>`。
+原实现在 test 分支直接返回、不追加 GitHub 根，于是 SSH/WSL/docker 连接始终只有一个必然失败的
+descriptor 候选（`.invalid` 域名 DNS 直接失败），Release 上已发布的 descriptor/archive 无法被消费，
+报 "Unable to resolve Source Server release descriptor"。
+
+本 spec 定义：GitHub Release 作为 remote assets 的补充下载源（含 test 产品环境）。
 
 ## 产品规则
 
@@ -18,8 +23,10 @@ remote assets（Source Server descriptor/archive）没有发布渠道：打包�
    未注入（上游官方构建/本地开发）时为空，不产生候选，行为与现状完全一致。
 3. 版本到 tag 的映射固定为 `v<ZCODE_VERSION>`；descriptor 与 archive 都是 Release asset，
    文件名与 mock-cdn staging 产物一致（`source-server-release.json`、`zcode-server-<target>.tar.gz`）。
-4. 测试产品环境（`ZCODE_ENV=test`，内网根目录）与显式 `ZCODE_REMOTE_ASSET_CDN_BASE_URL`
-   覆盖不追加 GitHub 候选：前者要求确定性，后者要求精确控制。
+4. 测试产品环境（`ZCODE_ENV=test`，内网根目录）在注入 `ZCODE_GITHUB_RELEASE_REPO` 时同样追加
+   GitHub 候选，顺序为「内网根 → GitHub Release」；未注入时（官方测试构建）候选列表与改造前
+   逐项相等，测试环境的确定性请求面不受影响。显式 `ZCODE_REMOTE_ASSET_CDN_BASE_URL`
+   覆盖仍不追加 GitHub 候选：该入口要求精确控制。
 5. 公开仓库匿名下载即可，不引入 token；私有仓库不支持（候选失败会按现有顺序兜底报错）。
 6. SSH `remote-download`（远端服务器直下）复用同一组 base 候选，远端机器直接从 GitHub 下载。
 
@@ -51,7 +58,8 @@ connect → probe 远端设备 → resolveReleaseAsset
 ## 验收场景
 
 1. 注入 GitHub 根时，production 候选列表 = [CDN×N, `<github-root>/v<version>`]；
-   test 环境与显式覆盖不追加。
+   test 环境 = [内网根, `<github-root>/v<version>`]；显式覆盖不追加。
+   未注入时不产生 GitHub 候选。
 2. `buildReleaseBaseCandidates` 对以 `/v<version>` 结尾的基址只返回原基址，不产生
    `<base>/<version>` 重复候选。
 3. 未注入 GitHub 根（上游官方构建）时，候选列表与现状逐项相等。

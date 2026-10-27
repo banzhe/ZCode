@@ -97,17 +97,33 @@ describe("remoteCdn", () => {
     ]);
   });
 
-  it("测试环境与显式覆盖不追加 GitHub Release 候选", () => {
+  it("测试环境注入 GitHub Release 根时在内网根之后追加兜底候选", () => {
+    // fork 的 GitHub Actions 发布不注入 ZCODE_ENV，产物是 Preview（test 产品环境）；
+    // 内网占位根不可解析，必须能回落到同一 Release 上已发布的 descriptor/archive。
     expect(
       resolveRemoteCdnBaseUrls({
         env: "test",
-        version: "0.0.0-test",
+        version: "3.16.2-build.20261027133747",
         githubReleaseDownloadRoot: "https://github.com/banzhe/ZCode/releases/download",
       }),
-    ).toEqual(["http://intranet.example.invalid:12345/ssh-remote-assets/0.0.0-test"]);
+    ).toEqual([
+      "http://intranet.example.invalid:12345/ssh-remote-assets/3.16.2-build.20261027133747",
+      "https://github.com/banzhe/ZCode/releases/download/v3.16.2-build.20261027133747",
+    ]);
+  });
+
+  it("显式覆盖 CDN 基址时不追加 GitHub Release 候选", () => {
     expect(
       resolveRemoteCdnBaseUrls({
         env: "production",
+        overrideBaseUrl: "https://cdn.example.com/releases",
+        version: "0.0.0-test",
+        githubReleaseDownloadRoot: "https://github.com/banzhe/ZCode/releases/download",
+      }),
+    ).toEqual(["https://cdn.example.com/releases"]);
+    expect(
+      resolveRemoteCdnBaseUrls({
+        env: "test",
         overrideBaseUrl: "https://cdn.example.com/releases",
         version: "0.0.0-test",
         githubReleaseDownloadRoot: "https://github.com/banzhe/ZCode/releases/download",

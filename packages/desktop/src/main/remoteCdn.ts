@@ -65,10 +65,6 @@ export function resolveRemoteCdnBaseUrls(options: ResolveRemoteCdnOptions = {}):
 
   const version = options.version ?? ZCODE_VERSION;
 
-  if (options.env === "test") {
-    return [`${TEST_REMOTE_CDN_RELEASE_ROOT}/${version}`];
-  }
-
   // Bug 原因：fork 构建的 ZCODE_VERSION 带 -build.<stamp> 后缀，官方 CDN 上没有该版本目录，
   // descriptor 全部 404 后连接必然失败。这里把构建期注入的 GitHub Release 根（CI 的
   // ZCODE_GITHUB_RELEASE_REPO）追加为兜底候选：CDN 全部失败后按 v<version> tag 拉 Release asset。
@@ -76,6 +72,16 @@ export function resolveRemoteCdnBaseUrls(options: ResolveRemoteCdnOptions = {}):
   const githubBase = githubReleaseDownloadRoot
     ? `${normalizeBaseUrl(githubReleaseDownloadRoot)}/v${version}`
     : null;
+
+  if (options.env === "test") {
+    // Bug 原因：test 产品环境过去在这里直接返回内网占位根。fork 的 GitHub Actions 发布不注入
+    // ZCODE_ENV，产物就是 Preview（test 环境），占位域名 intranet.example.invalid 不可解析，
+    // 于是 SSH/WSL 连接的 descriptor 只剩一个必然失败的候选，Release 上已发布的
+    // descriptor/archive 永远消费不到。内网根保持第一优先级，只在显式注入 GitHub 根时追加兜底；
+    // 官方测试构建不注入，候选列表逐项不变。
+    const testBases = [`${TEST_REMOTE_CDN_RELEASE_ROOT}/${version}`];
+    return githubBase ? [...testBases, githubBase] : testBases;
+  }
 
   const orderedReleaseRoots = shouldPreferDomesticRemoteCdn(options)
     ? [REMOTE_CDN_RELEASE_ROOTS.domestic, REMOTE_CDN_RELEASE_ROOTS.overseas]
