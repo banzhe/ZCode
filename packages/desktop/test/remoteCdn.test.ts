@@ -80,4 +80,53 @@ describe("remoteCdn", () => {
       }),
     ).toEqual(["https://cdn.example.com/releases"]);
   });
+
+  it("注入 GitHub Release 根时在 CDN 候选后追加 v<version> 兜底", () => {
+    expect(
+      resolveRemoteCdnBaseUrls({
+        env: "production",
+        locale: "zh-CN",
+        timeZone: "Asia/Shanghai",
+        version: "3.16.2-build.20261027112643",
+        githubReleaseDownloadRoot: "https://github.com/banzhe/ZCode/releases/download",
+      }),
+    ).toEqual([
+      "https://cdn.codegeex.cn/zcode/electron/releases/3.16.2-build.20261027112643",
+      "https://cdn-zcode.z.ai/zcode/electron/releases/3.16.2-build.20261027112643",
+      "https://github.com/banzhe/ZCode/releases/download/v3.16.2-build.20261027112643",
+    ]);
+  });
+
+  it("测试环境与显式覆盖不追加 GitHub Release 候选", () => {
+    expect(
+      resolveRemoteCdnBaseUrls({
+        env: "test",
+        version: "0.0.0-test",
+        githubReleaseDownloadRoot: "https://github.com/banzhe/ZCode/releases/download",
+      }),
+    ).toEqual(["http://intranet.example.invalid:12345/ssh-remote-assets/0.0.0-test"]);
+    expect(
+      resolveRemoteCdnBaseUrls({
+        env: "production",
+        overrideBaseUrl: "https://cdn.example.com/releases",
+        version: "0.0.0-test",
+        githubReleaseDownloadRoot: "https://github.com/banzhe/ZCode/releases/download",
+      }),
+    ).toEqual(["https://cdn.example.com/releases"]);
+  });
+
+  it("未注入 GitHub Release 根时保持现有候选列表", () => {
+    expect(
+      resolveRemoteCdnBaseUrls({
+        env: "production",
+        locale: "zh-CN",
+        timeZone: "Asia/Shanghai",
+        version: "3.16.2",
+        githubReleaseDownloadRoot: "  ",
+      }),
+    ).toEqual([
+      "https://cdn.codegeex.cn/zcode/electron/releases/3.16.2",
+      "https://cdn-zcode.z.ai/zcode/electron/releases/3.16.2",
+    ]);
+  });
 });

@@ -66,7 +66,14 @@ jobs:
           # 显式设为空字符串：build-time-config 对空串视为关闭，优先级高于私有默认配置，
           # 保证 CI 产物不检查、不下载 ZCode 自身的自动更新。
           ZCODE_AUTO_UPDATE: ""
+          # GitHub Release 兜底下载源：remote assets（source-server descriptor/archive）
+          # 与安装包发布到同一个 Release，运行时按 v<version> tag 匿名下载。
+          ZCODE_GITHUB_RELEASE_REPO: ${{ github.repository }}
         run: pnpm bundle:desktop -- --os win --arch x64
+
+      - name: Stage source server release assets
+        # 跨平台打包（linux/darwin）依赖 JS 打包而非本机工具链，可在 windows runner 上执行。
+        run: pnpm prepare:remote-assets
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -78,6 +85,7 @@ jobs:
             packages/desktop/dist/*.exe
             packages/desktop/dist/*.blockmap
             packages/desktop/dist/latest*.yml
+            packages/desktop/mock-cdn/releases/${{ steps.meta.outputs.version }}/*
           fail_on_unmatched_files: true
           generate_release_notes: true
           draft: false

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildComponentArtifactUrlCandidates,
   buildReleaseAssetUrlCandidates,
+  buildReleaseBaseCandidates,
 } from "@zcode/server/remote/remoteAssetCdn.js";
 
 describe("remoteAssetCdn URL encoding", () => {
@@ -44,6 +45,24 @@ describe("remoteAssetCdn URL encoding", () => {
 
     expect(urls).toEqual([
       "https://cdn.example.com/zcode/electron/releases/1.3.0/components/linux-arm64/server-bundle/v1.3.0%2B7138ea7a9b45.tar.gz",
+    ]);
+  });
+
+  it("GitHub Release 基址（v<version> 结尾）不应叠加版本段产生重复候选", () => {
+    expect(
+      buildReleaseBaseCandidates(
+        ["https://github.com/banzhe/ZCode/releases/download/v3.16.2-build.20261027112643"],
+        "3.16.2-build.20261027112643",
+      ),
+    ).toEqual(["https://github.com/banzhe/ZCode/releases/download/v3.16.2-build.20261027112643"]);
+  });
+
+  it("未固定版本的基址仍按 <base>/<version> 与裸根生成候选", () => {
+    expect(
+      buildReleaseBaseCandidates(["https://github.com/banzhe/ZCode/releases/download"], "1.3.0"),
+    ).toEqual([
+      "https://github.com/banzhe/ZCode/releases/download/1.3.0",
+      "https://github.com/banzhe/ZCode/releases/download",
     ]);
   });
 });

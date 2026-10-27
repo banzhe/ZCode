@@ -119,6 +119,7 @@ async function resolveRemoteDescriptor(
     ? join(cacheRoot, SOURCE_SERVER_RELEASE_DESCRIPTOR_FILE_NAME)
     : null;
   let lastError: unknown;
+  const candidateErrors: string[] = [];
   const fetchImpl = resolveRemoteAssetFetch(remoteAssetNetwork);
   for (const url of descriptorUrls) {
     try {
@@ -130,6 +131,9 @@ async function resolveRemoteDescriptor(
       return { descriptor, releaseBases };
     } catch (error) {
       lastError = error;
+      // 诊断要求：descriptor 全部候选失败时错误必须带每个 URL 与具体原因，
+      // 否则「资源未发布 / 网络失败 / 版本不一致」在用户侧不可区分。
+      candidateErrors.push(`${url} -> ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   if (cachedDescriptorPath && (await pathExists(cachedDescriptorPath))) {
@@ -138,7 +142,10 @@ async function resolveRemoteDescriptor(
       releaseBases,
     };
   }
-  throw new Error("Unable to resolve Source Server release descriptor", { cause: lastError });
+  throw new Error(
+    `Unable to resolve Source Server release descriptor; candidates: ${candidateErrors.join("; ")}`,
+    { cause: lastError },
+  );
 }
 
 async function downloadArchive(

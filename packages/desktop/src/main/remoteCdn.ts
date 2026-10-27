@@ -1,6 +1,9 @@
 import { ZCODE_VERSION, type ZCodeEnv } from "@zcode/shared";
 
 declare const __ZCODE_REMOTE_CDN_RELEASE_ROOTS__: readonly string[] | undefined;
+// 构建期注入的 GitHub Release 下载根（https://github.com/<owner>/<repo>/releases/download），
+// 由 CI 的 ZCODE_GITHUB_RELEASE_REPO=<owner>/<repo> 派生；未注入时为空串，表示不启用该下载源。
+declare const __ZCODE_GITHUB_RELEASE_DOWNLOAD_ROOT__: string | undefined;
 
 const REMOTE_CDN_RELEASE_ROOTS = {
   domestic: "https://cdn.codegeex.cn/zcode/electron/releases",
@@ -16,6 +19,8 @@ export interface ResolveRemoteCdnOptions {
   overrideBaseUrl?: string;
   version?: string;
   now?: Date;
+  /** 测试注入用；默认读构建期 define __ZCODE_GITHUB_RELEASE_DOWNLOAD_ROOT__。 */
+  githubReleaseDownloadRoot?: string;
 }
 
 function isChineseLocale(locale?: string | null): boolean {
@@ -43,34 +48,52 @@ export function shouldPreferDomesticRemoteCdn(
   return isChineseLocale(options.locale) && isUtcPlusEightTimeZone(timeZone, options.now);
 }
 
+function resolveGithubReleaseDownloadRoot(options: ResolveRemoteCdnOptions): string {
+  if (options.githubReleaseDownloadRoot !== undefined) {
+    return options.githubReleaseDownloadRoot.trim();
+  }
+  return typeof __ZCODE_GITHUB_RELEASE_DOWNLOAD_ROOT__ === "undefined"
+    ? ""
+    : __ZCODE_GITHUB_RELEASE_DOWNLOAD_ROOT__.trim();
+}
+
 export function resolveRemoteCdnBaseUrls(options: ResolveRemoteCdnOptions = {}): string[] {
   const overrideBaseUrl = options.overrideBaseUrl?.trim();
   if (overrideBaseUrl) {
     return [normalizeBaseUrl(overrideBaseUrl)];
   }
 
-  const orderedReleaseRoots = shouldPreferDomesticRemoteCdn(options)
-    ? [REMOTE_CDN_RELEASE_ROOTS.domestic, REMOTE_CDN_RELEASE_ROOTS.overseas]
-    : [REMOTE_CDN_RELEASE_ROOTS.overseas, REMOTE_CDN_RELEASE_ROOTS.domestic];
   const version = options.version ?? ZCODE_VERSION;
 
   if (options.env === "test") {
     return [`${TEST_REMOTE_CDN_RELEASE_ROOT}/${version}`];
   }
 
+  // Bug 原因：fork 构建的 ZCODE_VERSION 带 -build.<stamp> 后缀，官方 CDN 上没有该版本目录，
+  // descriptor 全部 404 后连接必然失败。这里把构建期注入的 GitHub Release 根（CI 的
+  // ZCODE_GITHUB_RELEASE_REPO）追加为兜底候选：CDN 全部失败后按 v<version> tag 拉 Release asset。
+  const githubReleaseDownloadRoot = resolveGithubReleaseDownloadRoot(options);
+  const githubBase = githubReleaseDownloadRoot
+    ? `${normalizeBaseUrl(githubReleaseDownloadRoot)}/v${version}`
+    : null;
+
+  const orderedReleaseRoots = shouldPreferDomesticRemoteCdn(options)
+    ? [REMOTE_CDN_RELEASE_ROOTS.domestic, REMOTE_CDN_RELEASE_ROOTS.overseas]
+    : [REMOTE_CDN_RELEASE_ROOTS.overseas, REMOTE_CDN_RELEASE_ROOTS.domestic];
+
   const configuredReleaseRoots =
     typeof __ZCODE_REMOTE_CDN_RELEASE_ROOTS__ === "undefined"
       ? []
       : __ZCODE_REMOTE_CDN_RELEASE_ROOTS__;
-  if (configuredReleaseRoots.length > 0) {
-    // Bugfix：remote runtime 的 manifest/components 下载根不能继续写死旧 CDN。
-    // 构建期按 CI 的 CDN_DOMAIN/OSS_PATH_PREFIX 注入有序列表，切换时只改 CI 变量。
-    return configuredReleaseRoots.map(
-      (releaseRoot) => `${normalizeBaseUrl(releaseRoot)}/${version}`,
-    );
-  }
 
-  return orderedReleaseRoots.map((releaseRoot) => `${releaseRoot}/${version}`);
+  const cdnBases =
+    configuredReleaseRoots.length > 0
+      ? // Bugfix：remote runtime 的 manifest/components 下载根不能继续写死旧 CDN。
+        // 构建期按 CI 的 CDN_DOMAIN/OSS_PATH_PREFIX 注入有序列表，切换时只改 CI 变量。
+        configuredReleaseRoots.map((releaseRoot) => `${normalizeBaseUrl(releaseRoot)}/${version}`)
+      : orderedReleaseRoots.map((releaseRoot) => `${releaseRoot}/${version}`);
+
+  return githubBase ? [...cdnBases, githubBase] : cdnBases;
 }
 
 export function resolvePrimaryRemoteCdnBaseUrl(

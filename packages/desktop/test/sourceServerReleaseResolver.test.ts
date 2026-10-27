@@ -231,10 +231,38 @@ describe("Source Server release resolver", () => {
         { fetch: remoteAssetFetch },
       ),
     ).rejects.toMatchObject({
-      message: "Unable to resolve Source Server release descriptor",
+      message: expect.stringContaining("Unable to resolve Source Server release descriptor"),
       cause: expect.objectContaining({ message: "proxy unavailable" }),
     });
     expect(remoteAssetFetch).toHaveBeenCalled();
     expect(directFetch).not.toHaveBeenCalled();
+  });
+
+  it("reports every failed descriptor candidate URL when resolution fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zcode-source-release-diagnostics-"));
+    const remoteAssetFetch = vi.fn<typeof fetch>(async () => new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", remoteAssetFetch);
+
+    // 用户可见消息经过 sanitizeRemoteConnectionLog 统一脱敏：URL 主体替换为 [redacted-url]，
+    // 但候选数量、顺序与每个候选的失败原因（HTTP 状态码）必须保留，可据此区分资源未发布与网络故障。
+    await expect(
+      resolveSourceServerReleaseAsset(
+        probe,
+        {
+          remoteCdnBaseUrls: [`https://cdn.example.test/releases/${ZCODE_VERSION}`],
+          remoteCacheDir: root,
+        },
+        target,
+        { fetch: remoteAssetFetch },
+      ),
+    ).rejects.toThrow(
+      expect.objectContaining({
+        message:
+          "Unable to resolve Source Server release descriptor; candidates: [redacted-url] -> HTTP 404",
+      }),
+    );
+    // 基址已固定到当前版本（.../releases/0.0.0-dev），buildReleaseBaseCandidates 去重后只有
+    // 一个 descriptor 候选，失败后不再产生第二次请求。
+    expect(remoteAssetFetch).toHaveBeenCalledTimes(1);
   });
 });

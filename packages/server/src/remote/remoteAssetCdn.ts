@@ -18,7 +18,8 @@ export function buildReleaseBaseCandidates(remoteCdnBaseUrls: string[], version:
     // 当调用方已经传入带版本的 CDN 基址时，继续盲目拼 `${base}/${version}`
     // 会先走一次必然失败的双版本路径（例如 .../0.2.10/0.2.10），产生无意义 404 噪音。
     // 这里识别“已固定到当前版本”的场景，直接使用原基址即可。
-    if (normalizedBase.endsWith(`/${version}`)) {
+    // GitHub Release 基址按 tag 命名固定为 .../download/v<version>（带 v 前缀），同样识别。
+    if (normalizedBase.endsWith(`/${version}`) || normalizedBase.endsWith(`/v${version}`)) {
       return [normalizedBase];
     }
     return [`${normalizedBase}/${version}`, normalizedBase];

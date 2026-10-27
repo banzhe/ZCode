@@ -57,6 +57,10 @@ function loadEnvFiles(): Record<string, string> {
   }
   if (process.env.CDN_DOMAIN) vars.CDN_DOMAIN = process.env.CDN_DOMAIN;
   if (process.env.OSS_PATH_PREFIX) vars.OSS_PATH_PREFIX = process.env.OSS_PATH_PREFIX;
+  // GitHub Release 兜底下载源（fork CI 注入 github.repository；本地可用 .env 覆盖）。
+  if (process.env.ZCODE_GITHUB_RELEASE_REPO) {
+    vars.ZCODE_GITHUB_RELEASE_REPO = process.env.ZCODE_GITHUB_RELEASE_REPO;
+  }
   if (process.env.VITE_ZAI_OAUTH_CLIENT_ID) {
     vars.VITE_ZAI_OAUTH_CLIENT_ID = process.env.VITE_ZAI_OAUTH_CLIENT_ID;
   }
@@ -95,6 +99,21 @@ export function resolveBuildRemoteCdnReleaseRoots(runtimeEnv: Record<string, str
     const pathPrefix = pathPrefixes.length === 1 ? pathPrefixes[0] : pathPrefixes[index];
     return `https://${domain}/${pathPrefix}`.replace(/\/+$/, "");
   });
+}
+
+// fork 构建把 GitHub Release 作为 remote assets 兜底下载源；CI 传 owner/repo（github.repository）。
+// 未注入时为空串：官方构建不产生 GitHub 候选，行为保持不变。
+export function resolveBuildGithubReleaseDownloadRoot(
+  runtimeEnv: Record<string, string | undefined>,
+) {
+  const repository = runtimeEnv.ZCODE_GITHUB_RELEASE_REPO?.trim() ?? "";
+  if (!repository) {
+    return "";
+  }
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)) {
+    throw new Error(`ZCODE_GITHUB_RELEASE_REPO must be <owner>/<repo>, got: ${repository}`);
+  }
+  return `https://github.com/${repository}/releases/download`;
 }
 
 export function resolveBuildPackagedAgentTelemetryEnv(
@@ -207,6 +226,10 @@ function createSharedDefines() {
     // Bugfix: remote runtime CDN 根之前硬编码在 main bundle 里，OSS/CDN 切换必须改代码。
     // 这里改成构建期从 CI 的 CDN_DOMAIN/OSS_PATH_PREFIX 注入；没有配置时保留旧默认。
     __ZCODE_REMOTE_CDN_RELEASE_ROOTS__: JSON.stringify(resolveBuildRemoteCdnReleaseRoots(env)),
+    // GitHub Release 兜底下载源（fork 发布链路）；CI 通过 ZCODE_GITHUB_RELEASE_REPO 注入。
+    __ZCODE_GITHUB_RELEASE_DOWNLOAD_ROOT__: JSON.stringify(
+      resolveBuildGithubReleaseDownloadRoot(env),
+    ),
   };
 }
 
