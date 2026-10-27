@@ -120,6 +120,25 @@ describe("remote asset staging CLI", () => {
     expect(collect).not.toHaveBeenCalled();
   });
 
+  it("Windows 下保留 pnpm 命令名并交给 shell 解析 .cmd 垫片", async () => {
+    // 回归：改写命令名为 pnpm.cmd 会触发 spawn EINVAL（Actions run 40510679016）。
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    await runCli([]);
+    expect(spawn).toHaveBeenCalledTimes(5);
+    for (const call of spawn.mock.calls) {
+      expect(call[0]).toBe("pnpm");
+      expect(call[2].shell).toBe(true);
+    }
+  });
+
+  it("非 Windows 平台不开启 shell", async () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    await runCli([]);
+    for (const call of spawn.mock.calls) {
+      expect(call[2].shell).toBeUndefined();
+    }
+  });
+
   it("does not publish when the second Linux target fails", async () => {
     spawn.mockImplementation((_command, args: string[]) => {
       const child = new EventEmitter();

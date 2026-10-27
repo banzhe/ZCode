@@ -7,6 +7,7 @@ import {
   beginSourceServerRemoteReleaseGeneration,
   collectSourceServerRemoteReleaseArchives,
 } from "./remoteAssetRelease.js";
+import { quoteArgsForWindowsShell, resolveSpawnRuntimeOptions } from "./spawnCommand.js";
 
 async function run(
   command: string,
@@ -14,12 +15,12 @@ async function run(
   cwd: string,
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
-  // Bug 原因：CI windows runner 只有 pnpm.cmd 垫片，Node 不带 shell 时无法 spawn .cmd，
-  // 报 spawn pnpm ENOENT。与 scripts/bootstrap.mjs 的解析规则保持一致。
-  const program =
-    process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command;
+  // Bug 原因：Windows runner 上 pnpm 只有 .cmd 垫片，裸命令 spawn 报 ENOENT，
+  // 改写成 pnpm.cmd 又会报 EINVAL。这里保留原命令名并交给 shell 解析垫片。
+  const runtimeOptions = resolveSpawnRuntimeOptions(command);
+  const spawnArgs = runtimeOptions.shell ? quoteArgsForWindowsShell(args) : [...args];
   await new Promise<void>((resolvePromise, rejectPromise) => {
-    const child = spawn(program, [...args], { cwd, env, stdio: "inherit" });
+    const child = spawn(command, spawnArgs, { cwd, env, stdio: "inherit", ...runtimeOptions });
     child.once("error", rejectPromise);
     child.once("exit", (code) => {
       if (code === 0) resolvePromise();
