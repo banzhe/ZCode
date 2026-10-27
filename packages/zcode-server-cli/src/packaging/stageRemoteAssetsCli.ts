@@ -14,8 +14,12 @@ async function run(
   cwd: string,
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
+  // Bug 原因：CI windows runner 只有 pnpm.cmd 垫片，Node 不带 shell 时无法 spawn .cmd，
+  // 报 spawn pnpm ENOENT。与 scripts/bootstrap.mjs 的解析规则保持一致。
+  const program =
+    process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command;
   await new Promise<void>((resolvePromise, rejectPromise) => {
-    const child = spawn(command, [...args], { cwd, env, stdio: "inherit" });
+    const child = spawn(program, [...args], { cwd, env, stdio: "inherit" });
     child.once("error", rejectPromise);
     child.once("exit", (code) => {
       if (code === 0) resolvePromise();
