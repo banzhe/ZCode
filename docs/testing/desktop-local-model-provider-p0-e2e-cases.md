@@ -1,5 +1,14 @@
 # Desktop Local Model Provider P0 E2E Cases
 
+## 远端模型导入（从接口获取）：pending 场景定义
+
+Spec：`docs/model-provider-remote-model-import.md`。该交互尚未建立正式 E2E case，先按以下场景定义挂 pending（`settings/manual-review/pending/provider-remote-model-import.test.ts`）：
+
+- Setup：独立 loopback 服务同时提供 `GET /v1/models`（返回两个 id，其中一个与已配置模型同名；可选携带 `context_length` / `architecture.input_modalities` 元数据）与既有 synthetic Chat Completions SSE；自定义 Provider 预先保存该 baseUrl 与测试 Key。
+- Action：打开设置 → 该自定义 Provider 详情，点击「从接口获取」；在弹窗中勾选未添加的模型并确认。
+- Assert：按钮请求先提交未保存草稿；已存在模型行禁用并标注「已添加」；确认后模型列表出现新模型，上下文窗口徽标显示自动配置值（远端元数据优先，未知模型为 200000 兜底）；带 `input_modalities` 的模型在编辑弹窗中显示对应输入模态；失败/空列表场景不落任何配置。
+- 剪枝：URL 拼接、鉴权头、响应解析与三级取值由 services/ui 单测枚举，不进入 E2E；不覆盖 zhipu-account Provider 与手机远控路径。
+
 ## Todo144：连接测试 1 Token、无正文也成功
 
 2026-09-15 Pro 验证：C91-04 与 Todo95 两个 pending spec 联合 2/2 通过，run `desktop-e2e-20260915073727784-p67110-e4267aabc5aa16a0`。无正文成功 fixture 明确返回 completion_tokens=1，避免混同“无内容且无用量”的既有 Adapter 重试场景；不改正式重试策略。

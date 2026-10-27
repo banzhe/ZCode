@@ -898,3 +898,10 @@ exceptions:
       - packages/ui/src/settings/DynamicWorkflowModeSetting.tsx
       - packages/ui/src/store/dynamicWorkflowAvailabilityStore.ts
     reason: Admitted upstream files edited only to let the user's dynamic workflow mode choice always win and keep the settings row visible; adopting packages/shared/src and packages/ui/src needs a separate module boundary refactor.
+  - id: provider-remote-model-import-unmanaged-files
+    rule: unmanaged-new-file
+    paths:
+      - packages/services/src/model-provider/providerRemoteModelLister.ts
+      - packages/ui/src/settings/model-provider-section/ImportRemoteModelsDialog.tsx
+      - packages/ui/src/settings/model-provider-section/remoteModelImport.ts
+    reason: 远端模型导入按 docs/model-provider-remote-model-import.md 只新增一个 Host 请求器、一个复用 Draft 提交语义的配置合成模块和一个对话框组件；全部写入仍走既有 addPersonalModel 契约，接管 model-provider 服务与设置目录需要单独的边界梳理。

@@ -19,6 +19,19 @@ import {
 import { createServiceDescriptor } from "../descriptors.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
+import type {
+  ProviderRemoteModelLister,
+  ProviderRemoteModelListerInput,
+  ProviderRemoteModelListResult,
+  RemoteModelListEntry,
+} from "./providerRemoteModelLister.js";
+
+export type {
+  ProviderRemoteModelLister,
+  ProviderRemoteModelListerInput,
+  ProviderRemoteModelListResult,
+  RemoteModelListEntry,
+} from "./providerRemoteModelLister.js";
 
 export type {
   ProviderSettingsProviderView,
@@ -68,6 +81,8 @@ export interface IProviderSettingsService {
   testModelConnectivity(
     input: ProviderSettingsConnectivityRequest,
   ): Promise<ModelConnectivityResult>;
+  /** 拉取自定义 Provider 端点的远端模型列表；只读操作，不写任何配置。 */
+  listRemoteModels(input: ProviderRemoteModelListerInput): Promise<ProviderRemoteModelListResult>;
 }
 
 export const IProviderSettingsService = createServiceDescriptor<IProviderSettingsService>(
@@ -110,6 +125,7 @@ export function createProviderSettingsService(
   facade: ProviderSettingsFacade,
   ensureReady: () => Promise<void> = async () => {},
   testConnectivity?: ProviderSettingsConnectivityTester,
+  listRemoteModels?: ProviderRemoteModelLister,
 ): IProviderSettingsService {
   return {
     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
@@ -205,6 +221,15 @@ export function createProviderSettingsService(
         providerId: input.providerId,
         modelId: input.modelId,
       });
+    },
+    listRemoteModels: async (input) => {
+      await ensureReady();
+      if (!listRemoteModels) {
+        throw new Error("当前 Environment 未装配远端模型列表能力");
+      }
+      // 与连通性测试同一边界：等待该 Provider 的进行中操作完成，避免读到保存中的半份配置。
+      await facade.waitForProviderOperations(input.providerId);
+      return listRemoteModels({ providerId: input.providerId });
     },
   };
 }

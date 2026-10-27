@@ -475,6 +475,7 @@ import {
   IProviderSettingsService,
 } from "./model-provider/providerFacadeServices.js";
 import { createProviderSettingsConnectivityTester } from "./model-provider/providerSettingsConnectivity.js";
+import { createProviderRemoteModelLister } from "./model-provider/providerRemoteModelLister.js";
 import {
   createProviderProvisioningSource,
   listProviderProvisioningCredentialKeys,
@@ -1608,6 +1609,8 @@ export function createLocalServices(options: {
   let providerConnectivityAgentService:
     | Pick<IZCodeAgentService, "testModelConnectivity">
     | undefined;
+  // lister 只在请求时才解引用 providerRuntime；View 由 Host service 的 ensureReady 守卫。
+  let providerRuntimeRef: ProviderRuntime | undefined;
   const providerRuntime = createProviderRuntimeFromConfigRuntime({
     configRuntime: providerConfigRuntime,
     accountSource: accountProviderConfigSource,
@@ -1622,12 +1625,21 @@ export function createLocalServices(options: {
         return providerConnectivityAgentService.testModelConnectivity(input);
       },
     }),
+    listRemoteModels: createProviderRemoteModelLister({
+      getView: () => {
+        if (!providerRuntimeRef) {
+          throw new Error("Provider Runtime 尚未完成远端模型列表装配");
+        }
+        return providerRuntimeRef.providerSettings.getView();
+      },
+    }),
     disposeAccountSource: () => {
       disposeAccountProviderInvalidation();
       accountProviderRefreshErrorDispose();
       accountProviderConfigSource.dispose();
     },
   });
+  providerRuntimeRef = providerRuntime;
   handleOAuthProviderLogout = createOAuthProviderLogoutHandler({
     accountProviderCredentialStore,
     refreshAccountProviders: (reason: string) => accountProviderConfigSource.refresh(reason),

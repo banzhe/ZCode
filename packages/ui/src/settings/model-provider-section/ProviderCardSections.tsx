@@ -12,17 +12,29 @@ import type {
   ProviderSettingsFormModel,
 } from "@/lib/providerSettingsFormTypes.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
+import type { ProviderRemoteModelListResult } from "@zcode/services";
+import type { RemoteModelListEntry } from "@zcode/services";
 import type { ProviderApiType } from "@zcode/provider";
 import {
   TID_MODEL_PROVIDER_ADD_MODEL_BUTTON,
   TID_MODEL_PROVIDER_BASE_URL_INPUT,
+  TID_MODEL_PROVIDER_FETCH_REMOTE_MODELS_BUTTON,
   TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON,
   TID_MODEL_PROVIDER_MODEL_INPUT,
   TID_MODEL_PROVIDER_NAME_EDIT_BUTTON,
   TID_MODEL_PROVIDER_NAME_INPUT,
   testId,
 } from "@zcode/shared/test-ids";
-import { InfoIcon, LockKeyholeIcon, Plus, Pencil, Trash2, MoreHorizontal } from "lucide-react";
+import {
+  InfoIcon,
+  LockKeyholeIcon,
+  Plus,
+  Pencil,
+  Trash2,
+  MoreHorizontal,
+  CloudDownload,
+  Loader2Icon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import { Switch } from "@/components/ui/switch.js";
@@ -47,6 +59,8 @@ import {
   resolveProviderConnectionApiFormatDisplayLabel,
 } from "@/settings/model-provider-section/ProviderApiFormatSelect.js";
 import { SortableProviderModelList } from "@/settings/model-provider-section/SortableProviderModelList.js";
+import { ImportRemoteModelsDialog } from "@/settings/model-provider-section/ImportRemoteModelsDialog.js";
+import { useProviderDetailFeedback } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
 import { useProviderModelDraft } from "@/settings/model-provider-section/useProviderModelDraft.js";
 import { ProviderLogo } from "@/settings/model-provider-section/ProviderLogo.js";
 import type { ProviderConfigObject } from "@zcode/provider";
@@ -385,6 +399,8 @@ export function ProviderModelsSection({
   providerAccess,
   models,
   onTestModel,
+  onFetchRemoteModels,
+  fetchRemoteModelsEnabled = false,
   onModelCommit,
   onModelEnabledChange,
   onDeleteModel,
@@ -398,6 +414,9 @@ export function ProviderModelsSection({
   providerAccess?: ProviderConfigObject["access"];
   models: ProviderSettingsFormModel[];
   onTestModel?: (model: string) => Promise<ModelConnectivityResult>;
+  onFetchRemoteModels?: () => Promise<ProviderRemoteModelListResult>;
+  /** 连接信息（baseUrl/Key）已保存才允许发起远端列表请求。 */
+  fetchRemoteModelsEnabled?: boolean;
   onModelCommit: (
     originalModelId: string,
     model: ProviderSettingsFormModel,
@@ -416,6 +435,9 @@ export function ProviderModelsSection({
   const addSavingRef = useRef(false);
   const [addCommitError, setAddCommitError] = useState<string | null>(null);
   const [addModel] = useState(createEmptyModel);
+  const [fetchRemoteModelsOpen, setFetchRemoteModelsOpen] = useState(false);
+  const [fetchingRemoteModels, setFetchingRemoteModels] = useState(false);
+  const [remoteModelEntries, setRemoteModelEntries] = useState<readonly RemoteModelListEntry[]>([]);
   const [addDraftErrorField, setAddDraftErrorField] = useState<
     | "id"
     | "contextWindow"
@@ -499,23 +521,93 @@ export function ProviderModelsSection({
       })
     : null;
 
+  const { showFeedback } = useProviderDetailFeedback();
+  // 重试动作要重新发起本次请求；用 ref 指向最新实现，回调不必自引用。
+  const fetchRemoteModelsRef = useRef<() => Promise<void>>(async () => {});
+  const handleFetchRemoteModels = useCallback(async () => {
+    if (!onFetchRemoteModels || fetchingRemoteModels) return;
+    setFetchingRemoteModels(true);
+    try {
+      const result = await onFetchRemoteModels();
+      setRemoteModelEntries(result.models);
+      setFetchRemoteModelsOpen(true);
+    } catch (error) {
+      // 失败走详情页反馈 toast，不在按钮行内展开文本，避免挤压按钮布局。
+      showFeedback({
+        key: `remote-models:${providerId}`,
+        message: error instanceof Error ? error.message : String(error),
+        state: "failure",
+        durationMs: 8_000,
+        actionLabel: intl.formatMessage({ id: "common.retry" }),
+        onAction: () => {
+          void fetchRemoteModelsRef.current();
+        },
+        dismissible: true,
+        dismissLabel: intl.formatMessage({ id: "common.close" }),
+      });
+    } finally {
+      setFetchingRemoteModels(false);
+    }
+  }, [fetchingRemoteModels, intl, onFetchRemoteModels, providerId, showFeedback]);
+  fetchRemoteModelsRef.current = handleFetchRemoteModels;
+
+  const resolveImportModelConfig = useCallback(
+    async (modelId: string) => {
+      const resolution = await providerSettingsService.resolveModelConfig({
+        providerId,
+        modelId,
+      });
+      return { inheritedConfig: resolution.inheritedConfig };
+    },
+    [providerId, providerSettingsService],
+  );
+
   return (
     <div>
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <span className="text-ui-base text-foreground-subtle">
           {intl.formatMessage({ id: "settings.modelProvider.models" })}
         </span>
-        <Button
-          type="button"
-          variant="secondary"
-          size="default"
-          className="rounded-lg"
-          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
-          onClick={openAddDialog}
-        >
-          <Plus data-icon="inline-start" aria-hidden="true" />
-          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {onFetchRemoteModels ? (
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                type="button"
+                variant="secondary"
+                size="default"
+                className="rounded-lg"
+                data-testid={TID_MODEL_PROVIDER_FETCH_REMOTE_MODELS_BUTTON}
+                disabled={fetchRemoteModelsEnabled ? fetchingRemoteModels : true}
+                title={
+                  fetchRemoteModelsEnabled
+                    ? undefined
+                    : intl.formatMessage({
+                        id: "settings.modelProvider.importRemoteModels.requiresConnection",
+                      })
+                }
+                onClick={() => void handleFetchRemoteModels()}
+              >
+                {fetchingRemoteModels ? (
+                  <Loader2Icon className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <CloudDownload data-icon="inline-start" aria-hidden="true" />
+                )}
+                {intl.formatMessage({ id: "settings.modelProvider.importRemoteModels.action" })}
+              </Button>
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            size="default"
+            className="rounded-lg"
+            data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+            onClick={openAddDialog}
+          >
+            <Plus data-icon="inline-start" aria-hidden="true" />
+            {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+          </Button>
+        </div>
       </div>
       {models.length > 0 ? (
         <div className="overflow-hidden rounded-lg border border-input-border bg-input">
@@ -610,6 +702,15 @@ export function ProviderModelsSection({
           onModelIdBlur={() => {
             void editor.flush().catch(() => undefined);
           }}
+        />
+        <ImportRemoteModelsDialog
+          open={fetchRemoteModelsOpen}
+          onOpenChange={setFetchRemoteModelsOpen}
+          providerId={providerId}
+          entries={remoteModelEntries}
+          existingModelIds={models.map((model) => model.modelId)}
+          resolveModelConfig={resolveImportModelConfig}
+          onAddModel={onAddModel}
         />
       </>
     </div>

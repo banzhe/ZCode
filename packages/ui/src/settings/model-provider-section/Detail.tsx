@@ -60,7 +60,7 @@ import {
 } from "@/lib/codingPlanFunnelTelemetry.js";
 import { useCodingPlanUpgradeDialog } from "@/settings/CodingPlanUpgradeDialogProvider.js";
 import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
-import type { ProviderSettingsView } from "@zcode/services";
+import type { ProviderRemoteModelListResult, ProviderSettingsView } from "@zcode/services";
 import type { SavePersonalModelDraftInput } from "@zcode/provider";
 import { resolveAccountProviderInspectionAccess } from "@/lib/accountProviderAccess.js";
 import { projectProviderSettingsViewToFormProviders } from "@/lib/providerSettingsFormProjection.js";
@@ -246,6 +246,7 @@ export function ModelProviderSectionDetail({
   onDelete,
   onReorderProviderModels,
   onTestModel,
+  onFetchRemoteModels,
   onCodingPlanLogin,
   onRetryCodingPlan,
   onCodingPlanDisconnect,
@@ -285,6 +286,7 @@ export function ModelProviderSectionDetail({
   onDelete: (provider: ProviderSettingsFormProvider) => Promise<void>;
   onReorderProviderModels?: (providerId: string, modelIds: string[]) => Promise<void>;
   onTestModel: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+  onFetchRemoteModels?: (providerId: string) => Promise<ProviderRemoteModelListResult>;
   onRetryCodingPlan?: () => void | Promise<void>;
   onCodingPlanLogin: (
     presetId: BuiltinModelProviderId,
@@ -320,6 +322,7 @@ export function ModelProviderSectionDetail({
     onSavePersonalModelDraft,
     onSetPersonalModelEnabled,
     onDeletePersonalModel,
+    onFetchRemoteModels,
     settingsRevision: providerSettingsView?.revision,
   };
   const selectedPlanAccess = useMemo(() => {

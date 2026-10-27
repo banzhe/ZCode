@@ -7,6 +7,7 @@ import {
   type ProviderSettingsFormModel,
 } from "@/lib/providerSettingsFormTypes.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
+import type { ProviderRemoteModelListResult } from "@zcode/services";
 import {
   isApiKeyAccess,
   type ProviderApiType,
@@ -150,6 +151,7 @@ export function InlineEditableProviderCard({
   onDeletePersonalModel,
   onDelete,
   onTestModel,
+  onFetchRemoteModels,
   onReorderModelIds,
   readOnlyEndpoints,
   presetApiKeyUrl,
@@ -177,6 +179,7 @@ export function InlineEditableProviderCard({
   onDeletePersonalModel?: (providerId: string, modelId: string) => Promise<unknown>;
   onDelete?: () => void | Promise<void>;
   onTestModel?: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+  onFetchRemoteModels?: (providerId: string) => Promise<ProviderRemoteModelListResult>;
   onReorderModelIds?: (modelIds: string[]) => Promise<void>;
   readOnlyEndpoints?: boolean;
   presetApiKeyUrl?: string;
@@ -663,6 +666,15 @@ export function InlineEditableProviderCard({
     [commitPendingDraft, onTestModel, provider.providerId],
   );
 
+  const handleFetchRemoteModels = useCallback(async (): Promise<ProviderRemoteModelListResult> => {
+    if (!onFetchRemoteModels) {
+      throw new Error("当前设置入口未装配远端模型列表能力");
+    }
+    // 与连通性测试同一边界：远端请求必须使用已保存的连接草稿，否则拿到旧地址/旧 Key 的列表。
+    await commitPendingDraft("fetch-remote-models");
+    return onFetchRemoteModels(provider.providerId);
+  }, [commitPendingDraft, onFetchRemoteModels, provider.providerId]);
+
   const handleModelCommit = useCallback(
     async (
       originalModelId: string,
@@ -884,6 +896,8 @@ export function InlineEditableProviderCard({
           providerAccess={provider.config.access}
           models={models}
           onTestModel={onTestModel ? handleTestModel : undefined}
+          onFetchRemoteModels={onFetchRemoteModels ? handleFetchRemoteModels : undefined}
+          fetchRemoteModelsEnabled={isApiKeyProvider && baseUrlValue.trim().length > 0}
           onModelCommit={handleModelCommit}
           onModelEnabledChange={handleModelEnabledChange}
           onDeleteModel={handleDeleteModel}

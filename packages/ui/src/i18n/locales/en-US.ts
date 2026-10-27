@@ -4408,6 +4408,23 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.models": "Model list",
   "settings.modelProvider.modelsEmpty": "No models are configured. Add a model to use it in chat.",
   "settings.modelProvider.addModel": "Add model",
+  "settings.modelProvider.importRemoteModels.action": "Fetch from API",
+  "settings.modelProvider.importRemoteModels.title": "Fetch models from API",
+  "settings.modelProvider.importRemoteModels.description":
+    "Choose which remote models to add to this provider",
+  "settings.modelProvider.importRemoteModels.searchPlaceholder": "Search model ID",
+  "settings.modelProvider.importRemoteModels.selectAll": "Select all",
+  "settings.modelProvider.importRemoteModels.deselectAll": "Deselect all",
+  "settings.modelProvider.importRemoteModels.empty":
+    "The endpoint returned no models. Check the base URL.",
+  "settings.modelProvider.importRemoteModels.alreadyAdded": "Added",
+  "settings.modelProvider.importRemoteModels.selectedCount": "{count} models selected",
+  "settings.modelProvider.importRemoteModels.confirm": "Add selected models",
+  "settings.modelProvider.importRemoteModels.failure": "Failed to import models. Please retry.",
+  "settings.modelProvider.importRemoteModels.partialSummary":
+    "Added {added} models; {failed} failed. Failed models stay selected for retry.",
+  "settings.modelProvider.importRemoteModels.requiresConnection":
+    "Save the base URL and API key first",
   "settings.modelProvider.modelId": "Model ID",
   "settings.modelProvider.modelDisplayName": "Display name",
   "settings.modelProvider.modelApiFormat.anthropic": "Anthropic messages",

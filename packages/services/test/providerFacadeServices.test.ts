@@ -166,6 +166,38 @@ describe("Provider Settings 目标环境写入", () => {
   });
 });
 
+describe("Provider Settings 远端模型列表", () => {
+  it("未装配 lister 时抛错，装配后等待 Provider 操作完成再请求", async () => {
+    const facade = {
+      onDidChange: vi.fn(),
+      waitForProviderOperations: vi.fn(async () => {}),
+    };
+    const withoutLister = createProviderSettingsService(
+      facade as unknown as ProviderSettingsFacade,
+    );
+    await expect(withoutLister.listRemoteModels({ providerId: "p" })).rejects.toThrow(
+      "远端模型列表能力",
+    );
+    let release!: () => void;
+    const operations = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    facade.waitForProviderOperations = vi.fn(() => operations);
+    const lister = vi.fn(async () => ({ models: [{ id: "m" }] }));
+    const service = createProviderSettingsService(
+      facade as unknown as ProviderSettingsFacade,
+      undefined,
+      undefined,
+      lister,
+    );
+    const pending = service.listRemoteModels({ providerId: "p" });
+    expect(lister).not.toHaveBeenCalled();
+    release();
+    await expect(pending).resolves.toEqual({ models: [{ id: "m" }] });
+    expect(lister).toHaveBeenCalledWith({ providerId: "p" });
+  });
+});
+
 describe("createModelSelectionService", () => {
   it("读取参数只交给该次 Facade 调用，不进入广播或其他消费者", async () => {
     let emit: (() => void) | undefined;

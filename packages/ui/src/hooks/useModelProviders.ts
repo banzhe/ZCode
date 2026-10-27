@@ -160,6 +160,12 @@ export function useModelProviders(target: {
     [commitProviderSettingsView, providerSettingsService],
   );
 
+  /** 只读远端模型列表；不产生配置写入，也不需要提交 Settings View。 */
+  const listProviderRemoteModels = useCallback(
+    (providerId: string) => providerSettingsService.listRemoteModels({ providerId }),
+    [providerSettingsService],
+  );
+
   const saveDisplayOrder = useCallback(
     async (state: ProviderOrderView) => {
       const normalizedState: ProviderOrderView = {
@@ -231,6 +237,7 @@ export function useModelProviders(target: {
     deleteProvider,
     reorderProviderModels,
     saveDisplayOrder,
+    listProviderRemoteModels,
     testModelConnectivity,
     providerSettingsView,
   };

@@ -6,6 +6,9 @@ export {
   IProviderSettingsService,
   type ModelSelectionView,
   type ModelSelectionViewInput,
+  type ProviderRemoteModelListerInput,
+  type ProviderRemoteModelListResult,
+  type RemoteModelListEntry,
   type ProviderSettingsProviderView,
   type ProviderSettingsView,
 } from "./model-provider/providerFacadeServices.js";
