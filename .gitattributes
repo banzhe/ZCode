@@ -1,3 +1,14 @@
+# 全仓统一 LF。Windows 上 core.autocrlf=true（本机在系统级与用户级都开着）会把文本
+# 文件检出成 CRLF，导致 oxfmt --check 全仓误报、db:schema:check 逐字节比对失败。
+# 这里声明所有文本文件在索引与工作区都用 LF；同一文件内后匹配的规则优先，所以下方
+# 按具体路径声明的 eol/-text/binary 仍然生效。
+* text=auto eol=lf
+
+# Windows 批处理例外：cmd.exe 解析 LF-only 的 .bat/.cmd 时，goto 标签与跨行 if 块
+# 不可靠（packages/android/gradlew.bat 大量使用 goto）。索引仍统一存 LF，检出为 CRLF。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
 # 保持脚本文件 LF 换行，避免 Windows CRLF 导致 shebang 解析失败
 *.mjs text eol=lf
 *.sh  text eol=lf
