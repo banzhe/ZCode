@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { gunzipSync } from "node:zlib";
@@ -14,6 +14,7 @@ import {
   stageRelease,
 } from "../src/packaging/stage.js";
 import { resolveHostTarCommand } from "../src/packaging/tarCommand.js";
+import { readTarGzEntries } from "./helpers/tarEntries.js";
 
 const execFileAsync = promisify(execFile);
 async function runTar(args: string[]): Promise<void> {
@@ -310,6 +311,38 @@ describe("stageRelease", () => {
 
     expect(staged.packagedDependencies).toEqual(["fake-dep", "fake-transitive", "node-pty"]);
     expect(staged.archivePath).toBeNull();
+  });
+
+  it("POSIX 归档为 launcher、内置 node 与 native tools 补齐可执行位", async () => {
+    const fixture = await makeStageFixture();
+    const toolsDir = join(await makeTempDir(), "tools");
+    await writeFakeNativeTools(toolsDir, { bfs: "bfs", ripgrep: "rg", ugrep: "ugrep" });
+    const staged = await stageRelease({
+      target: "linux-x64",
+      appVersion: "9.9.9-test",
+      nativeToolsDir: toolsDir,
+      ...fixture,
+    });
+    const root = basename(staged.releaseDir);
+    const modes = new Map(
+      (await readTarGzEntries(staged.archivePath ?? "")).map((entry) => [
+        entry.name,
+        entry.mode & 0o777,
+      ]),
+    );
+    // Bug 原因：Windows 宿主的 bsdtar 只能记 0666，远端解压后 exec 直接 Permission denied；
+    // 可执行集合由 staging 声明，归档必须在任何宿主上都带 0755。
+    for (const executablePath of [
+      "bin/zcode",
+      "runtime/node",
+      "runtime/tools/bfs/bfs",
+      "runtime/tools/ripgrep/rg",
+      "runtime/tools/ugrep/ugrep",
+    ]) {
+      expect(modes.get(`${root}/${executablePath}`)).toBe(0o755);
+    }
+    // 未声明的普通文件保持宿主记录（Windows 0666 / POSIX 0644），不做归一化。
+    expect(modes.get(`${root}/runtime/server-cli.js`)).not.toBe(0o755);
   });
 
   it("keeps official darwin prebuilds including spawn-helper for darwin targets", async () => {

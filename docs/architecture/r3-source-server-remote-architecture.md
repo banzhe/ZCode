@@ -355,6 +355,7 @@ serve --daemon
 - 远端直下只把 curl/wget、tar 和 SHA-256 工具作为必需能力；awk/wc/date 等仅用于增强进度，缺失时降级为无速度进度而不是阻断下载。Desktop 下载后上传同样必须在上传前探测 tar，避免传完大 archive 才失败。
 - archive 内置官方 Node 22 Linux 构建，动态链接要求 glibc 2.28 及以上。probe 在同一次只读 round-trip 中读取 `getconf GNU_LIBC_VERSION`；Linux 远端（含 WSL、Docker）低于 2.28 时（如 CentOS 7、RHEL 7、Ubuntu 18.04），probe 以预检失败拒绝，不进入安装确认、上传或远端直下，消息写明实测版本和所需版本。读不到 glibc 版本（musl、缺 getconf、输出无法识别）时不拦截，沿用原安装链。
 - macOS 构建 POSIX archive 时必须显式禁用 bsdtar xattr/PAX metadata；仅设置 `COPYFILE_DISABLE=1` 不足以移除 `LIBARCHIVE.xattr.*`，否则 Linux 解压会按条目刷出数千行 unknown extended header 并掩盖真实错误。
+- Windows 宿主打包 POSIX archive 时必须显式补齐可执行位：NTFS 与 System32 bsdtar 都不记录 POSIX exec 位，`bin/zcode`、`runtime/node` 与 native search tools 会落成 0666，远端解压后第一步 exec 就报 `Permission denied`。可执行集合由 staging 声明、归档创建后规范为 0755，宿主已记录 0755 时不重写；见 [Source Server 发行归档的 POSIX 可执行位](../specs/source-server-archive-posix-modes.md)。
 
 ### 5.3 发现、安装与升级链
 

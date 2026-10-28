@@ -10,6 +10,7 @@ import {
   pruneKoffiRuntime,
   resolveProductionPackageClosure,
 } from "./stageDependencies.js";
+import { applyArchiveExecutableModes } from "./archiveEntryModes.js";
 import { createComponentArchive, hashPaths, runPackagingCommand } from "./stageArchives.js";
 
 export { collectBareModuleSpecifiers, isNodePtyRuntimePath, resolveProductionPackageClosure };
@@ -146,19 +147,32 @@ async function assertOfficialPluginRuntime(stagedDir: string, name: string): Pro
 
 const BUNDLED_SKILL_PACK_TOP_LEVEL_PATHS: readonly string[] = ["README.md", "skills"];
 
+/**
+ * 归档内必须可执行的固定成员。NTFS 与 Windows bsdtar 都不记录 POSIX exec 位，远端解压会落成
+ * 0666，安装第一步 exec `bin/zcode` 即失败；可执行性只能由这里显式声明。
+ */
+const POSIX_RELEASE_EXECUTABLE_PATHS: readonly string[] = ["bin/zcode", "runtime/node"];
+
+interface StagedNativeTools {
+  ids: string[];
+  /** 相对发行根的可执行文件路径；随 native-search-tools 组件一起进入归档。 */
+  executablePaths: string[];
+}
+
 async function copyNativeTools(
   sourceDir: string | undefined,
-  targetDir: string,
+  releaseDir: string,
   target: ServerTarget,
-): Promise<string[]> {
-  if (!sourceDir) return [];
+): Promise<StagedNativeTools> {
+  const staged: StagedNativeTools = { ids: [], executablePaths: [] };
+  if (!sourceDir) return staged;
   try {
     await access(sourceDir);
   } catch {
-    return [];
+    return staged;
   }
+  const targetDir = join(releaseDir, "runtime", "tools");
   const ids = target.startsWith("win32-") ? ["ripgrep", "ugrep"] : ["bfs", "ripgrep", "ugrep"];
-  const copied: string[] = [];
   for (const id of ids) {
     const source = join(
       sourceDir,
@@ -174,7 +188,8 @@ async function copyNativeTools(
     } catch {
       continue;
     }
-    const targetPath = join(targetDir, id, source.split(sep).pop() ?? id);
+    const binaryName = source.split(sep).pop() ?? id;
+    const targetPath = join(targetDir, id, binaryName);
     await mkdir(dirname(targetPath), { recursive: true });
     await cp(source, targetPath, { dereference: true });
     // 修复：只复制可执行文件会让独立 native-search-tools 组件丢失已准备的声明。
@@ -183,10 +198,13 @@ async function copyNativeTools(
       if (!bytes.length) throw new Error(`Empty native notice: ${notice}`);
       await writeFile(join(dirname(targetPath), notice), bytes);
     }
-    if (!target.startsWith("win32-")) await chmod(targetPath, 0o755);
-    copied.push(id);
+    if (!target.startsWith("win32-")) {
+      await chmod(targetPath, 0o755);
+      staged.executablePaths.push(relative(releaseDir, targetPath).split(sep).join("/"));
+    }
+    staged.ids.push(id);
   }
-  return copied;
+  return staged;
 }
 
 /** 组装 `zcode-server-<os>-<arch>/` 发行目录（spec §7.1）；只做本地组装，不上传、不发布。 */
@@ -301,11 +319,8 @@ export async function stageRelease(options: StageOptions): Promise<StagedRelease
     await ensureNodePtyPrebuild(options, nodeModulesTargetDir);
   }
 
-  const tools = await copyNativeTools(
-    options.nativeToolsDir,
-    join(runtimeDir, "tools"),
-    options.target,
-  );
+  const tools = await copyNativeTools(options.nativeToolsDir, releaseDir, options.target);
+  const executablePaths = [...POSIX_RELEASE_EXECUTABLE_PATHS, ...tools.executablePaths];
   const plugins = await copyDirectoryIfPresent(
     options.officialPluginsDir,
     join(runtimeDir, "packages"),
@@ -357,7 +372,7 @@ export async function stageRelease(options: StageOptions): Promise<StagedRelease
           },
         ]
       : []),
-    ...(tools.length > 0 ? [{ id: "native-search-tools", paths: ["runtime/tools"] }] : []),
+    ...(tools.ids.length > 0 ? [{ id: "native-search-tools", paths: ["runtime/tools"] }] : []),
   ];
   const componentMeta: Array<{
     id: string;
@@ -372,7 +387,7 @@ export async function stageRelease(options: StageOptions): Promise<StagedRelease
     componentMeta.push({ ...component, ...info });
   }
   const manifest = createRuntimeManifest(options.target, options.appVersion, {
-    tools,
+    tools: tools.ids,
     plugins,
     components: componentMeta,
   });
@@ -404,7 +419,11 @@ export async function stageRelease(options: StageOptions): Promise<StagedRelease
     await rm(archivePath, { force: true });
     if (extension === "zip")
       await runPackagingCommand("zip", ["-qr", archivePath, releaseName], outputRoot);
-    else await runPackagingCommand("tar", ["-czf", archivePath, releaseName], outputRoot);
+    else {
+      await runPackagingCommand("tar", ["-czf", archivePath, releaseName], outputRoot);
+      // 宿主 tar 在 Windows 上只能记 0666；远端解压后 exec 会失败，因此归档落盘后补齐声明集合。
+      await applyArchiveExecutableModes({ archivePath, executablePaths });
+    }
   }
 
   return {

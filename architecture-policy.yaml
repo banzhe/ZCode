@@ -905,3 +905,7 @@ exceptions:
       - packages/ui/src/settings/model-provider-section/ImportRemoteModelsDialog.tsx
       - packages/ui/src/settings/model-provider-section/remoteModelImport.ts
     reason: 远端模型导入按 docs/model-provider-remote-model-import.md 只新增一个 Host 请求器、一个复用 Draft 提交语义的配置合成模块和一个对话框组件；全部写入仍走既有 addPersonalModel 契约，接管 model-provider 服务与设置目录需要单独的边界梳理。
+  - id: source-server-archive-modes-unmanaged-file
+    rule: unmanaged-new-file
+    paths: [packages/zcode-server-cli/src/packaging/archiveEntryModes.ts]
+    reason: Windows 宿主打包的 Source Server 归档丢失 POSIX exec 位，导致远端 extract 阶段 `Permission denied`（docs/specs/source-server-archive-posix-modes.md）；该文件只在 staging 落盘后重写 tar 头的 mode/checksum，不引入新的 owner、契约或依赖方向，接管 packages/zcode-server-cli/src 需要单独的模块边界梳理。
