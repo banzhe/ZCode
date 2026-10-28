@@ -2,6 +2,10 @@ import { access } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stageAgentBundle } from "../packages/desktop/scripts/stage-agent-bundle.mjs";
+import {
+  clearDesktopAgentBuildMarker,
+  writeDesktopAgentBuildMarker,
+} from "./desktop-agent-build-marker.mjs";
 import { runCommand } from "./spawn-command.mjs";
 
 // adapters tsc 在内存受限机器上会 OOM（exit 134），给整条构建链路提高堆上限。
@@ -150,10 +154,20 @@ function runBootstrapWithRemoteBuild() {
   });
 }
 
+// 先清掉上一轮残留：marker 存在即代表本轮构建跑到了写入口，读取端才敢据此跳过重建。
+clearDesktopAgentBuildMarker({ repoRoot });
+
 if (useBootstrapWithRemoteBuild) {
   runBootstrapWithRemoteBuild();
   stageDevAgentBundle();
   stageDevCuaPluginRuntime({ env: cuaPluginRuntimeStagingEnv });
+  // bootstrap 路径只构建 CLI 工作区包，不构建插件 runtime：写空清单，让 prepare:agent-bundle
+  // 继续按原行为（bare tsc 路径）补齐插件。
+  writeDesktopAgentBuildMarker({
+    repoRoot,
+    mode: "bootstrap-with-remote",
+    pluginRuntimePackages: [],
+  });
   process.exit(0);
 }
 
@@ -176,6 +190,13 @@ if (!useTurboBuild) {
   });
   stageDevAgentBundle();
   stageDevCuaPluginRuntime({ env: cuaPluginRuntimeStagingEnv });
+  // 本条路径构建并校验了全部 requiredDevPluginRuntimeBuilds；登记给 prepare:agent-bundle，
+  // 避免同一轮构建对同一批插件再跑一遍 pnpm build。
+  writeDesktopAgentBuildMarker({
+    repoRoot,
+    mode: "pnpm",
+    pluginRuntimePackages: requiredDevPluginRuntimeBuilds.map(({ packageName }) => packageName),
+  });
   process.exit(0);
 }
 
@@ -198,3 +219,10 @@ runCommand(
 );
 stageDevAgentBundle();
 stageDevCuaPluginRuntime({ env: cuaPluginRuntimeStagingEnv });
+// turbo 只按 @zcode/cli 的依赖图构建，官方插件 runtime 不在其依赖内：写空清单，
+// 让 prepare:agent-bundle 保持原有的显式构建。
+writeDesktopAgentBuildMarker({
+  repoRoot,
+  mode: "turbo",
+  pluginRuntimePackages: [],
+});

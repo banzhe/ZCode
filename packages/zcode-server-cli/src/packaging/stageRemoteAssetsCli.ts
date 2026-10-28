@@ -8,6 +8,7 @@ import {
   collectSourceServerRemoteReleaseArchives,
 } from "./remoteAssetRelease.js";
 import { quoteArgsForWindowsShell, resolveSpawnRuntimeOptions } from "./spawnCommand.js";
+import { timeStep } from "./stepTimer.js";
 
 async function run(
   command: string,
@@ -30,7 +31,11 @@ async function run(
 }
 
 async function main(): Promise<void> {
-  const linuxOnly = process.argv.slice(2).includes("--linux");
+  const argv = process.argv.slice(2);
+  const linuxOnly = argv.includes("--linux");
+  // 发布链路只发布 descriptor 与四个整包，组件归档是开发态 SSH 验证产物：
+  // 默认仍产出，只有显式传入时才跳过（CI 发布步骤使用）。
+  const skipComponentArchives = argv.includes("--skip-component-archives");
   const targets = linuxOnly
     ? SOURCE_SERVER_REMOTE_RELEASE_TARGETS.filter((target) => target.startsWith("linux-"))
     : SOURCE_SERVER_REMOTE_RELEASE_TARGETS;
@@ -51,23 +56,28 @@ async function main(): Promise<void> {
   };
   const versionReleaseDir = join(repoRoot, "packages/desktop/mock-cdn/releases", version);
   await beginSourceServerRemoteReleaseGeneration({ versionReleaseDir });
-  await run("pnpm", ["--filter", "@zcode/server-cli", "build"], repoRoot, env);
+  await timeStep("remote-assets:server-cli-build", () =>
+    run("pnpm", ["--filter", "@zcode/server-cli", "build"], repoRoot, env),
+  );
+  // 每个目标的计时包含 stageCli 子进程内部的 stage:* 计时（父含子），两层的耗时不可相加。
   for (const [index, target] of targets.entries()) {
-    await run(
-      "pnpm",
-      [
-        "--filter",
-        "@zcode/server-cli",
-        "exec",
-        "tsx",
-        "src/packaging/stageCli.ts",
-        "--target",
-        target,
-        ...(linuxOnly ? ["--skip-component-archives"] : []),
-        ...(index === 0 ? [] : ["--skip-agent-build"]),
-      ],
-      repoRoot,
-      env,
+    await timeStep(`remote-assets:${target}`, () =>
+      run(
+        "pnpm",
+        [
+          "--filter",
+          "@zcode/server-cli",
+          "exec",
+          "tsx",
+          "src/packaging/stageCli.ts",
+          "--target",
+          target,
+          ...(linuxOnly || skipComponentArchives ? ["--skip-component-archives"] : []),
+          ...(index === 0 ? [] : ["--skip-agent-build"]),
+        ],
+        repoRoot,
+        env,
+      ),
     );
   }
   const collected = await collectSourceServerRemoteReleaseArchives({

@@ -15,8 +15,11 @@ import {
 } from "../runtime/manifest.js";
 import { stageRelease } from "./stage.js";
 import { resolveNodeDistBase } from "./nodeDistMirror.js";
+import { timeStep } from "./stepTimer.js";
 
 const log = (...args: unknown[]): void => console.log("[stage]", ...args);
+
+const SERVER_CLI_CACHE_DIR = "node_modules/.cache/zcode-server-cli";
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -84,11 +87,7 @@ async function ensureNodeBinary(repoRoot: string, target: ServerTarget): Promise
   const nodeVersion = `v${SERVER_RUNTIME_NODE_VERSION}`;
   const isWindows = target.startsWith("win32-");
   const nodeTarget = isWindows ? target.replace(/^win32-/u, "win-") : target;
-  const cacheDir = join(
-    repoRoot,
-    "node_modules/.cache/zcode-server-cli",
-    `node-${nodeVersion}-${target}`,
-  );
+  const cacheDir = join(repoRoot, SERVER_CLI_CACHE_DIR, `node-${nodeVersion}-${target}`);
   const cachedBinaryPath = join(cacheDir, isWindows ? "node.exe" : "node");
   if (await pathExists(cachedBinaryPath)) {
     log(`reuse cached node runtime: ${cachedBinaryPath}`);
@@ -163,7 +162,7 @@ async function resolveNativeToolsDir(repoRoot: string, target: ServerTarget): Pr
   // prepare-native-search-tools.mjs 按目标 release plan 准备到 server-cli 自有缓存：内网依赖源已配置时下载，
   // 未配置时解包仓库归档；缓存命中同样要通过版本、摘要与架构校验，并刷新同目录声明。
   const [platform, arch] = target.split("-");
-  const cacheDir = join(repoRoot, "node_modules/.cache/zcode-server-cli", "tools", target);
+  const cacheDir = join(repoRoot, SERVER_CLI_CACHE_DIR, "tools", target);
   log(`prepare native search target assets: ${target}`);
   await runCommand(
     process.execPath,
@@ -240,36 +239,41 @@ async function main(): Promise<void> {
   const appVersion = (
     JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8")) as { version: string }
   ).version;
+  // agent bundle / node 二进制 / native tools 是并行准备的，这几段计时区间会重叠，不可相加。
   const [agentBundlePath, nodeBinaryPath] = await Promise.all([
-    ensureAgentBundle(repoRoot, argv.includes("--skip-agent-build")),
-    ensureNodeBinary(repoRoot, target),
+    timeStep(`stage:${target}:agent-bundle`, () =>
+      ensureAgentBundle(repoRoot, argv.includes("--skip-agent-build")),
+    ),
+    timeStep(`stage:${target}:node-binary`, () => ensureNodeBinary(repoRoot, target)),
   ]);
   const [nativeToolsDir, officialPluginsDir, workspacePackageDirs] = await Promise.all([
-    resolveNativeToolsDir(repoRoot, target),
+    timeStep(`stage:${target}:native-tools`, () => resolveNativeToolsDir(repoRoot, target)),
     Promise.resolve(join(repoRoot, "apps/zcode-cli/packages")),
     resolveWorkspacePackageDirs(repoRoot),
   ]);
 
-  const staged = await stageRelease({
-    target,
-    appVersion,
-    distDir,
-    agentBundlePath,
-    bundledSkillsDir: join(repoRoot, "apps/zcode-cli/packages/bundled-skills"),
-    nodeBinaryPath,
-    notices: {
-      thirdParty: thirdParty.toString("utf8"),
-      node: nodeNotice.bytes.toString("utf8"),
-      nodeSource: JSON.stringify(nodeNotice.source, null, 2) + "\n",
-    },
-    workspaceNodeModulesDir: join(repoRoot, "node_modules"),
-    workspacePackageDirs,
-    nativeToolsDir,
-    officialPluginsDir,
-    outputDir: join(packageRoot, "dist-release"),
-    archive: !argv.includes("--no-archive"),
-    componentArchives: !argv.includes("--skip-component-archives"),
-  });
+  const staged = await timeStep(`stage:${target}:release-tree`, () =>
+    stageRelease({
+      target,
+      appVersion,
+      distDir,
+      agentBundlePath,
+      bundledSkillsDir: join(repoRoot, "apps/zcode-cli/packages/bundled-skills"),
+      nodeBinaryPath,
+      notices: {
+        thirdParty: thirdParty.toString("utf8"),
+        node: nodeNotice.bytes.toString("utf8"),
+        nodeSource: JSON.stringify(nodeNotice.source, null, 2) + "\n",
+      },
+      workspaceNodeModulesDir: join(repoRoot, "node_modules"),
+      workspacePackageDirs,
+      nativeToolsDir,
+      officialPluginsDir,
+      outputDir: join(packageRoot, "dist-release"),
+      archive: !argv.includes("--no-archive"),
+      componentArchives: !argv.includes("--skip-component-archives"),
+    }),
+  );
 
   log(`release dir: ${staged.releaseDir}`);
   if (staged.archivePath) log(`archive: ${staged.archivePath}`);

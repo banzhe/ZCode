@@ -909,3 +909,7 @@ exceptions:
     rule: unmanaged-new-file
     paths: [packages/zcode-server-cli/src/packaging/archiveEntryModes.ts]
     reason: Windows 宿主打包的 Source Server 归档丢失 POSIX exec 位，导致远端 extract 阶段 `Permission denied`（docs/specs/source-server-archive-posix-modes.md）；该文件只在 staging 落盘后重写 tar 头的 mode/checksum，不引入新的 owner、契约或依赖方向，接管 packages/zcode-server-cli/src 需要单独的模块边界梳理。
+  - id: release-pipeline-step-timer-unmanaged-file
+    rule: unmanaged-new-file
+    paths: [packages/zcode-server-cli/src/packaging/stepTimer.ts]
+    reason: 发布链路的 `[ci][timer]` 计时原本在两个 CLI 入口各写一份，stageCli 的副本还带 `[stage]` 前缀，与 spec 声明的裸行格式不符（docs/specs/release-pipeline-build-reuse.md 规则 6）；该文件只做这一个日志格式的唯一出口，不引入新的 owner、契约或依赖方向，接管 packages/zcode-server-cli/src 需要单独的模块边界梳理。

@@ -17,6 +17,10 @@ import { basename, dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { runCommand } from "../../../scripts/spawn-command.mjs";
+import {
+  isPluginRuntimeBuildCovered,
+  readDesktopAgentBuildMarker,
+} from "../../../scripts/desktop-agent-build-marker.mjs";
 import { stageAgentBundle } from "./stage-agent-bundle.mjs";
 import {
   isSharpRequiredByComputerUse,
@@ -324,15 +328,34 @@ function buildCliBundle() {
 }
 
 function buildOfficialPluginRuntimes() {
+  // buildCliBundle() 刚跑完的 build-desktop-agent-cli.mjs 会在 pnpm 路径构建并校验这批插件
+  // runtime，并把实际构建的包名写进 marker；同一轮再构建一遍纯属重复劳动。
+  // marker 缺失、损坏、非 pnpm 路径或清单覆盖不全（例如这里新增了 requiresRuntime 插件）时
+  // 一律回退为重建，断言无论走哪条分支都保留，产物缺失仍然 fail-closed。
+  const canReusePluginRuntimes = isPluginRuntimeBuildCovered({
+    marker: readDesktopAgentBuildMarker({ repoRoot }),
+    requiredPackages: officialPluginPackages
+      .filter((plugin) => plugin.requiresRuntime)
+      .map((plugin) => plugin.packageName),
+  });
+
   for (const plugin of officialPluginPackages) {
     if (!plugin.requiresRuntime) continue;
-    console.log(`[prepare:agent-bundle] building ${plugin.packageName} runtime ...`);
     if (isBootstrapWithRemote) {
       buildOfficialPluginRuntimeForBootstrap(plugin);
       assertOfficialPluginRuntime(plugin);
       continue;
     }
 
+    if (canReusePluginRuntimes) {
+      console.log(
+        `[prepare:agent-bundle] reuse ${plugin.packageName} runtime built in this run (pnpm agent build)`,
+      );
+      assertOfficialPluginRuntime(plugin);
+      continue;
+    }
+
+    console.log(`[prepare:agent-bundle] building ${plugin.packageName} runtime ...`);
     runCommand(
       "pnpm",
       ["--dir", resolve(repoRoot, "apps/zcode-cli"), "--filter", plugin.packageName, "build"],

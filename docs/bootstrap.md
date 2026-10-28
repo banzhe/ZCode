@@ -4,7 +4,9 @@
 
 `pnpm bootstrap:with-remote` 保留远程调试需要的完整初始化流程。它会先拉取 `apps/zcode-cli` submodule，再安装依赖、准备 desktop 本地 runtime 资源并执行 bootstrap 构建，最后通过 `@zcode/server-cli stage:remote-assets` 生成 `source-server-release.json` 与四个平台 archive。它不再生成 legacy manifest/components。
 
-如只需要单独准备 Source Server 资源，可以执行 `pnpm prepare:remote-assets`。
+如只需要单独准备 Source Server 资源，可以执行 `pnpm prepare:remote-assets`。发布链路改用
+`pnpm prepare:remote-assets -- --skip-component-archives`：Release 只发布 descriptor 与四个整包，
+组件归档仅服务开发态 SSH 验证，缓存与 job 编排见 [发布流水线的构建复用与缓存](specs/release-pipeline-build-reuse.md)。
 
 Linux SSH 开发验证使用 `pnpm prepare:remote-assets:linux`，只构建 `linux-x64` 和
 `linux-arm64`，不执行 submodule 初始化、依赖安装或其它 workspace 的 bootstrap 构建。

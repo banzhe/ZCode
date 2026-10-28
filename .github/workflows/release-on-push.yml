@@ -13,7 +13,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-release:
+  # 版本戳的唯一所有者：两个构建 job 必须拿到同一个 version/tag，否则安装包的
+  # ZCODE_VERSION 与 descriptor 的 version 会不同源，客户端找不到 releases/<version>/。
+  stamp:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Stamp version and resolve tag
+        id: meta
+        shell: pwsh
+        run: |
+          # 只计算版本戳并输出，不改工作区：两个构建 job 各自把同一个 version 写回自己的 package.json。
+          # 时间戳放在 -build. 预发布段，保证同一基础版本内按 UTC 时间排序。
+          # 注意：Desktop 的 isVersionGreaterThan 用 semver.coerce 丢弃预发布段，
+          # 同一基础版本（如 3.16.2）的多次构建会被判为相等、不触发更新；
+          # 要让每次发布都被识别为更新，必须递增 major/minor/patch。
+          $pkgPath = 'package.json'
+          $text = Get-Content -LiteralPath $pkgPath -Raw
+          $pattern = '(?m)^(\s*"version":\s*")([^"]+)(")'
+          $match = [regex]::Match($text, $pattern)
+          if (-not $match.Success) { throw 'version field not found in package.json' }
+          $base = $match.Groups[2].Value -replace '-.*$', ''
+          $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss')
+          $version = "$base-build.$stamp"
+          $tag = "v$version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Stamped version: $version"
+
+  build-desktop:
+    needs: stamp
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -32,29 +67,23 @@ jobs:
           node-version: "24.14.0"
           cache: pnpm
 
-      - name: Stamp version and resolve tag
-        id: meta
-        shell: pwsh
-        run: |
-          # 仅修改 runner 工作区的 package.json，不回写仓库。
-          # 时间戳放在 -build. 预发布段，保证同一基础版本内按 UTC 时间排序。
-          # 注意：Desktop 的 isVersionGreaterThan 用 semver.coerce 丢弃预发布段，
-          # 同一基础版本（如 3.16.2）的多次构建会被判为相等、不触发更新；
-          # 要让每次发布都被识别为更新，必须递增 major/minor/patch。
-          $pkgPath = 'package.json'
-          $text = Get-Content -LiteralPath $pkgPath -Raw
-          $pattern = '(?m)^(\s*"version":\s*")([^"]+)(")'
-          $match = [regex]::Match($text, $pattern)
-          if (-not $match.Success) { throw 'version field not found in package.json' }
-          $base = $match.Groups[2].Value -replace '-.*$', ''
-          $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss')
-          $version = "$base-build.$stamp"
-          $updated = [regex]::Replace($text, $pattern, ('${1}' + $version + '${3}'), 1)
-          Set-Content -LiteralPath $pkgPath -Value $updated -NoNewline -Encoding utf8
-          $tag = "v$version"
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          Write-Host "Stamped version: $version"
+      # 只改 runner 工作区，不回写仓库。两个构建 job 必须写回 stamp 输出的同一个 version，
+      # 否则安装包的 ZCODE_VERSION 与 descriptor 的 version 不同源，客户端找不到 releases/<version>/。
+      - name: Apply stamped version
+        run: node scripts/apply-release-version.mjs ${{ needs.stamp.outputs.version }}
+
+      # Electron runtime 与 electron-builder 二进制（nsis / winCodeSign / icons）默认落在
+      # %LOCALAPPDATA% 下，runner 之间不复用；不缓存时每次都要重下（本机实测 2.4 GB / 87 MB）。
+      # key 只跟随真正决定这两类产物的文件，restore-keys 兜底避免依赖变动就整包重下。
+      - name: Cache Electron and electron-builder binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: desktop-packager-${{ runner.os }}-${{ hashFiles('packages/desktop/package.json', 'packages/desktop/electron-builder.config.js') }}
+          restore-keys: |
+            desktop-packager-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -71,21 +100,97 @@ jobs:
           ZCODE_GITHUB_RELEASE_REPO: ${{ github.repository }}
         run: pnpm bundle:desktop -- --os win --arch x64
 
+      - name: Upload desktop installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-installer
+          path: |
+            packages/desktop/dist/*.exe
+            packages/desktop/dist/*.blockmap
+            packages/desktop/dist/latest*.yml
+          # 安装包与 tar.gz 本身已压缩，再 deflate 只烧 CPU，直接存储更快。
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  build-remote-assets:
+    needs: stamp
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.14.0"
+          cache: pnpm
+
+      - name: Apply stamped version
+        run: node scripts/apply-release-version.mjs ${{ needs.stamp.outputs.version }}
+
+      # 每个目标都要准备 Node v22.16.0 与 native search tools；缓存命中仍由
+      # ensureNodeBinary / prepare-native-search-tools.mjs 自己校验版本、摘要与架构。
+      - name: Cache Source Server staging tools
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/zcode-server-cli
+          key: source-server-tools-${{ runner.os }}-${{ hashFiles('packages/zcode-server-cli/src/contracts.ts', 'scripts/native-search-tools-config.mjs') }}
+          restore-keys: |
+            source-server-tools-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Stage source server release assets
         # 跨平台打包（linux/darwin）依赖 JS 打包而非本机工具链，可在 windows runner 上执行。
-        run: pnpm prepare:remote-assets
+        # --skip-component-archives：Release 只发布 descriptor 与四个整包，组件归档不进发布面。
+        run: pnpm prepare:remote-assets -- --skip-component-archives
+
+      - name: Upload remote asset artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-assets
+          path: packages/desktop/mock-cdn/releases/${{ needs.stamp.outputs.version }}/*
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [stamp, build-desktop, build-remote-assets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # artifact 内的路径以 packages/desktop/dist 为根，下载到同一位置即可让既有 glob 继续命中。
+      - name: Download desktop installer
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-installer
+          path: packages/desktop/dist
+
+      - name: Download remote assets
+        uses: actions/download-artifact@v4
+        with:
+          name: remote-assets
+          path: packages/desktop/mock-cdn/releases/${{ needs.stamp.outputs.version }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: ZCode ${{ steps.meta.outputs.version }} (${{ steps.meta.outputs.tag }})
+          tag_name: ${{ needs.stamp.outputs.tag }}
+          name: ZCode ${{ needs.stamp.outputs.version }} (${{ needs.stamp.outputs.tag }})
           target_commitish: ${{ github.sha }}
           files: |
             packages/desktop/dist/*.exe
             packages/desktop/dist/*.blockmap
             packages/desktop/dist/latest*.yml
-            packages/desktop/mock-cdn/releases/${{ steps.meta.outputs.version }}/*
+            packages/desktop/mock-cdn/releases/${{ needs.stamp.outputs.version }}/*
           fail_on_unmatched_files: true
           generate_release_notes: true
           draft: false

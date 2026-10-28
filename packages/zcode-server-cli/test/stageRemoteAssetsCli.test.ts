@@ -112,6 +112,36 @@ describe("remote asset staging CLI", () => {
     expect(collect).toHaveBeenCalledWith(expect.objectContaining({ targets: allTargets }));
   });
 
+  it("发布入口显式请求时才对全部目标跳过组件归档", async () => {
+    vi.stubEnv("ZCODE_ENV", undefined);
+    await runCli(["--skip-component-archives"]);
+    const targetCalls = spawn.mock.calls.slice(1).map((call) => call[1]);
+    expect(targetCalls).toHaveLength(allTargets.length);
+    for (const args of targetCalls) {
+      expect(args).toContain("--skip-component-archives");
+    }
+    // agent bundle 仍只由第一个目标构建，其余目标复用（fail-closed 由 stageCli 负责）。
+    expect(targetCalls[0]).not.toContain("--skip-agent-build");
+    for (const args of targetCalls.slice(1)) {
+      expect(args).toContain("--skip-agent-build");
+    }
+  });
+
+  it("为构建与每个目标输出 [ci][timer] 阶段计时", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCli([]);
+    const lines = logSpy.mock.calls.map((call) => String(call[0]));
+    for (const label of [
+      "remote-assets:server-cli-build",
+      ...allTargets.map((target) => `remote-assets:${target}`),
+    ]) {
+      expect(lines).toContain(`[ci][timer] ${label} start`);
+      expect(lines.some((line) => line.startsWith(`[ci][timer] ${label} end duration_ms=`))).toBe(
+        true,
+      );
+    }
+  });
+
   it("rejects invalid Linux environments before invalidating or building", async () => {
     vi.stubEnv("ZCODE_ENV", "invalid");
     await expect(runCli(["--linux"])).rejects.toThrow(/Invalid ZCODE_ENV/);
