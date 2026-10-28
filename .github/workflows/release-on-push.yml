@@ -76,7 +76,7 @@ jobs:
       # %LOCALAPPDATA% 下，runner 之间不复用；不缓存时每次都要重下（本机实测 2.4 GB / 87 MB）。
       # key 只跟随真正决定这两类产物的文件，restore-keys 兜底避免依赖变动就整包重下。
       - name: Cache Electron and electron-builder binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/AppData/Local/electron/Cache
@@ -101,7 +101,7 @@ jobs:
         run: pnpm bundle:desktop -- --os win --arch x64
 
       - name: Upload desktop installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-installer
           path: |
@@ -138,7 +138,7 @@ jobs:
       # 每个目标都要准备 Node v22.16.0 与 native search tools；缓存命中仍由
       # ensureNodeBinary / prepare-native-search-tools.mjs 自己校验版本、摘要与架构。
       - name: Cache Source Server staging tools
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules/.cache/zcode-server-cli
           key: source-server-tools-${{ runner.os }}-${{ hashFiles('packages/zcode-server-cli/src/contracts.ts', 'scripts/native-search-tools-config.mjs') }}
@@ -154,7 +154,7 @@ jobs:
         run: pnpm prepare:remote-assets -- --skip-component-archives
 
       - name: Upload remote asset artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: remote-assets
           path: packages/desktop/mock-cdn/releases/${{ needs.stamp.outputs.version }}/*
@@ -169,13 +169,13 @@ jobs:
     steps:
       # artifact 内的路径以 packages/desktop/dist 为根，下载到同一位置即可让既有 glob 继续命中。
       - name: Download desktop installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: desktop-installer
           path: packages/desktop/dist
 
       - name: Download remote assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: remote-assets
           path: packages/desktop/mock-cdn/releases/${{ needs.stamp.outputs.version }}

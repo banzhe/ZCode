@@ -66,7 +66,7 @@ describe("release workflow pipeline shape", () => {
 
   it("caches Electron / electron-builder binaries and Source Server staging tools", () => {
     const desktopCache = step("build-desktop", "Cache Electron and electron-builder binaries");
-    expect(desktopCache.uses).toBe("actions/cache@v4");
+    expect(desktopCache.uses).toBe("actions/cache@v6");
     const desktopPaths = String(desktopCache.with?.path ?? "");
     expect(desktopPaths).toContain("AppData/Local/electron/Cache");
     expect(desktopPaths).toContain("AppData/Local/electron-builder/Cache");
@@ -74,7 +74,7 @@ describe("release workflow pipeline shape", () => {
     expect(String(desktopCache.with?.["restore-keys"] ?? "")).toContain("desktop-packager-");
 
     const remoteCache = step("build-remote-assets", "Cache Source Server staging tools");
-    expect(remoteCache.uses).toBe("actions/cache@v4");
+    expect(remoteCache.uses).toBe("actions/cache@v6");
     expect(String(remoteCache.with?.path ?? "")).toContain("node_modules/.cache/zcode-server-cli");
     expect(String(remoteCache.with?.key ?? "")).toContain("native-search-tools-config.mjs");
     expect(String(remoteCache.with?.["restore-keys"] ?? "")).toContain("source-server-tools-");
@@ -92,13 +92,13 @@ describe("release workflow pipeline shape", () => {
     expect(files).toContain("packages/desktop/dist/latest*.yml");
     expect(files).toContain("needs.stamp.outputs.version");
 
-    expect(step("release", "Download desktop installer").uses).toBe("actions/download-artifact@v4");
-    expect(step("release", "Download remote assets").uses).toBe("actions/download-artifact@v4");
+    expect(step("release", "Download desktop installer").uses).toBe("actions/download-artifact@v8");
+    expect(step("release", "Download remote assets").uses).toBe("actions/download-artifact@v8");
     expect(step("build-desktop", "Upload desktop installer artifact").uses).toBe(
-      "actions/upload-artifact@v4",
+      "actions/upload-artifact@v7",
     );
     expect(step("build-remote-assets", "Upload remote asset artifacts").uses).toBe(
-      "actions/upload-artifact@v4",
+      "actions/upload-artifact@v7",
     );
   });
 
