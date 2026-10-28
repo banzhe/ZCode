@@ -539,6 +539,10 @@ export const TID_CHAT_MODE_SELECT_TRIGGER = "chat-mode-select-trigger";
 export const TID_CHAT_MODE_SELECT_ITEM = "chat-mode-select-item";
 /** 聊天工具栏 context 消耗按钮 */
 export const TID_CHAT_CONTEXT_USAGE_TRIGGER = "chat-context-usage-trigger";
+/** 聊天工具栏请求性能药丸（解码 TPS，位于 context 指示器左侧） */
+export const TID_CHAT_REQUEST_METRICS_TRIGGER = "chat-request-metrics-trigger";
+/** 请求性能悬浮面板容器 */
+export const TID_CHAT_REQUEST_METRICS_PANEL = "chat-request-metrics-panel";
 /** 思考块折叠触发按钮 */
 export const TID_CHAT_REASONING_TRIGGER = "chat-reasoning-trigger";
 /** 思考块折叠内容容器 */

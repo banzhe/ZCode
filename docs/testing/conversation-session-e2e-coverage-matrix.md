@@ -3669,10 +3669,14 @@ Memory MEM08 埋点补充（2026-09-17）：现有 Desktop Memory 用例同时�
 | DBG01 | pending | `packages/desktop/test/e2e/conversation-session/manual-review/pending/conversation-session-developer-tools.test.ts`                                                | desktop continuous 真实 provider replay → session/debug → 打开面板 → Token、网络及 TPS                |
 | DBG02 | pending | `packages/ui/test/browser/manual-review/pending/developer-tools.test.mjs`                                                                                          | 浏览器集成：CLI 调试 collector → HTTP → 真实面板；390/1200、深浅主题、切 task；不是完整手机 relay E2E |
 | DBG03 | focused | `apps/zcode-cli/packages/bootstrap/tests/session-debug.test.ts`、`packages/services/test/zcodeAgentService.v4.test.ts`、`packages/ui/test/useSessionDebug.test.ts` | 计算边界、去重、有界记录、desktop/mobile service 只读路由、旧响应隔离、隐藏停查                       |
+| DBG04 | pending | `packages/ui/test/browser/manual-review/pending/composer-request-metrics.test.mjs`                                                                                | 浏览器集成：药丸 + 两段面板 14 行、上传耗时与 TTFT 分离、390/1200 × 深浅主题、切 task；不是完整手机 relay E2E |
+| DBG05 | focused | `apps/zcode-cli/packages/bootstrap/tests/session-request-metrics.test.ts`、`apps/zcode-cli/packages/adapters/tests/usage-query.test.ts`、`request-body-metrics.test.ts`、`request-upload-observation.test.ts` | 聚合口径（时间加权 TPS、算术 TTFT、独立样本计数）、主轮过滤、畸形 JSON 容错、上传观测关联与降级 |
 
 2026-09-17 本地验证：macOS Electron 1/1 通过，run `desktop-e2e-20260917074421594-p15200-ad550fced28b7d8e`（exit 0），请求结束后打开面板仍有诊断，120 output / 约 3 秒显示约 40 TPS。浏览器 390/1200 × 深浅主题 4/4、根相关测试 125/125、CLI 调试测试 9/9 通过；根及 CLI typecheck、E2E typecheck、根 lint、architecture check、fixture check 通过。仍为 manual-review/pending，未做完整手机配对/relay、Docker/Windows/Linux 验收。
 
 CLI 全量 lint 被既有 max-lines 错误阻塞；`zcode-protocol.test.ts` 的远程 Cron denylist 与 Account Config 两项断言失败，使用未修改的 server/server-operations 源码复跑同样失败。
+
+2026-10-01 本地验证（DBG04/DBG05）：浏览器 390/1200 × 深浅主题 4/4 通过（`packages/desktop/.e2e-artifacts/composer-request-metrics/`），药丸显示最近一次解码 TPS、面板两段 14 行、上传耗时与 TTFT 分离、面板不超视口、切 task 后药丸消失；bootstrap 18/18、adapters 29/29、根 UI+services 117/117、`pnpm typecheck`、`pnpm test:architecture` 通过；`pnpm architecture:check --changed` 0 违规（新文件按既有惯例登记 `unmanaged-new-file` 例外）。CLI 逐包 `tsc --noEmit`（contracts/adapters/bootstrap/core）通过；`pnpm --dir apps/zcode-cli typecheck` 因本机缺 `turbo` 未能执行。core `runtime-tool-loop.test.ts` 156/160，4 个失败为 Windows 路径断言（`/tmp` vs `\tmp`、`/work/src/*`），回退本次 core 改动后同样失败，属既有用例对 Windows 不兼容。仍为 manual-review/pending：未做 desktop 真实 provider E2E 与完整手机配对/relay 验收。
 
 ### RDUX-04 向导回归
 

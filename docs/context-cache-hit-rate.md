@@ -73,6 +73,13 @@ requests and 100 network events; aggregate counters cover all observed main-turn
 Closing the panel does not stop collection. Closing/reclaiming the CLI session or restarting its
 process clears these diagnostics; persisted history does not invent missing network timing.
 
+`session/debug` also accepts an optional `scope`. The default (`all`) returns the live observation
+described here. `scope: "requestMetrics"` returns only the persisted request metrics aggregate
+(`requestMetrics`) with empty `rounds` / `networkEntries` and `cache: null`; it is served from
+`model_usage` so it survives process restarts, and it backs the composer request-performance pill
+(see [composer request metrics](ui/composer-request-metrics.md)). Neither scope starts or resumes a
+task, and the network-entry shape is unchanged by that additive field.
+
 ```text
 model request status -> CLI session debug observation -> session/debug -> UI hook -> panel
 desktop continuous / mobile replayable: unchanged; both read the same observation query

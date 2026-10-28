@@ -8,7 +8,9 @@ import {
 import type {
   MessageId,
   Model,
-  ModelUsage,
+  ModelNetworkStatusEvent,
+  ModelRequestCompletedStatusEvent,
+  ModelRequestMetricsRecord,
   SessionEvent,
   ToolCallId,
   TraceContext,
@@ -66,6 +68,9 @@ export async function recordModelUsageFact(
   const failedNetworkEvent = networkEvents.findLast(
     (event) => event.type === "model_request_failed",
   );
+  const completedNetworkEvent = networkEvents.findLast(
+    (event) => event.type === "model_request_completed",
+  );
   const usage = input.result?.usage ?? failedNetworkEvent?.usage;
   const firstTokenAt = firstModelTokenAt(input.events, input.networkEventStartIndex);
   const durationMs = completedAt - input.startedAt;
@@ -117,6 +122,7 @@ export async function recordModelUsageFact(
       errorMessage: errorInfo.message,
       rawUsage: usage,
       providerMetadata: input.result?.providerMetadata,
+      ...requestMetricsFromCompletion(completedNetworkEvent),
     });
   } catch (error) {
     runtime.logger?.warn("Usage model fact write failed", {
@@ -343,6 +349,35 @@ function usageStoreFor(runtime: AgentRuntimeInternal): UsageStorePort | undefine
     : undefined;
 }
 
+/**
+ * 从完成事件抽取请求传输指标。
+ *
+ * provider 时钟（`durationMs` / `timeToFirstContentMs`）与 runtime 的 `duration_ms` /
+ * `time_to_first_token_ms` 不是同一口径，必须原样落库，否则请求性能面板的 TPS 会和
+ * 开发者工具的 TPS 对不上。任一值都无法测量时字段缺席，不用 0 或响应头时刻代替。
+ */
+function requestMetricsFromCompletion(
+  event: ModelRequestCompletedStatusEvent | undefined,
+): { requestMetrics?: ModelRequestMetricsRecord } | undefined {
+  if (!event) return undefined;
+  const metrics: ModelRequestMetricsRecord = {
+    ...nonNegativeMetricField("requestBodyBytes", event.requestBodyBytes),
+    ...nonNegativeMetricField("requestBodyCompressedBytes", event.requestBodyCompressedBytes),
+    ...nonNegativeMetricField("requestBodyUploadMs", event.requestBodyUploadMs),
+    ...nonNegativeMetricField("providerDurationMs", event.durationMs),
+    ...nonNegativeMetricField("providerTimeToFirstContentMs", event.timeToFirstContentMs),
+  };
+  return Object.keys(metrics).length > 0 ? { requestMetrics: metrics } : undefined;
+}
+
+function nonNegativeMetricField<K extends keyof ModelRequestMetricsRecord>(
+  key: K,
+  value: unknown,
+): Pick<ModelRequestMetricsRecord, K> | Record<string, never> {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return {};
+  return { [key]: value } as Pick<ModelRequestMetricsRecord, K>;
+}
+
 function modelUsageId(input: RecordModelUsageInput): string {
   const logicalId =
     input.assistantMessageId ??
@@ -355,21 +390,11 @@ function toolUsageId(sessionId: string, toolCallId: string): string {
   return `usage_tool_${sessionId}_${toolCallId}`;
 }
 
-function modelNetworkEvents(events: readonly SessionEvent[]) {
+/** 只取模型网络状态事件的 payload；`SessionEvent.payload` 是 `unknown`，这里按契约收窄一次。 */
+function modelNetworkEvents(events: readonly SessionEvent[]): ModelNetworkStatusEvent[] {
   return events
     .filter((event) => event.type === SessionEventType.ModelNetworkStatus)
-    .map((event) => event.payload)
-    .filter(
-      (
-        payload,
-      ): payload is {
-        type: string;
-        reason?: string;
-        retryable?: boolean;
-        message?: string;
-        usage?: ModelUsage;
-      } => Boolean(payload && typeof payload === "object" && "type" in payload),
-    );
+    .map((event) => event.payload as ModelNetworkStatusEvent);
 }
 
 function firstModelTokenAt(

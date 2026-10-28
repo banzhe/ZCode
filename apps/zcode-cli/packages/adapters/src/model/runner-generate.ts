@@ -56,6 +56,7 @@ import { AccountRequestRetry } from "./account-request-retry.js";
 import { resolveModelForAttempt, RuntimeHeadersRefreshError } from "./runner-runtime-headers.js";
 import { retryAllowedByFailurePolicy } from "./workflow-model-failure-policy.js";
 import { modelFailureStatusFields, providerRequestIdFromHeaders } from "./runner-telemetry.js";
+import { requestBodyMetricsFields } from "./request-body-metrics.js";
 import { repairReasoningHistoryAfterSignatureRejection } from "./reasoning-history-normalization.js";
 import { admitAttempt, type AttemptAdmission } from "./request-admission.js";
 import {
@@ -327,6 +328,7 @@ export async function runGenerateText(input: {
           responseHeaderCount: Object.keys(responseHeaders).length,
           responseHeaders,
           providerRequestId: providerRequestIdFromHeaders(responseHeaders),
+          ...requestBodyMetricsFields(resolved.requestBodyMetrics),
           timestamp: new Date(completedAt).toISOString(),
           type: "model_request_completed",
           usage,

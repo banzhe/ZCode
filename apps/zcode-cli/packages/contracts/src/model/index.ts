@@ -224,6 +224,15 @@ export interface ModelRequestCompletedStatusEvent extends ModelNetworkStatusBase
   streamMaxIdleMs?: number;
   streamStallCount?: number;
   streamOutputCommitted?: boolean;
+  /** 本次请求体压缩前字节数；无法测量时缺席（不伪造）。 */
+  requestBodyBytes?: number;
+  /** 本次请求体 zstd 压缩后字节数；未开启压缩或无法测量时缺席。 */
+  requestBodyCompressedBytes?: number;
+  /**
+   * 请求体**上传完成**耗时：交给 transport 到 undici 报告 body 已全部写入底层 socket。
+   * 不含服务端排队与首包等待（那部分与 TTFT 重叠，不能代表发送成本）；拿不到信号时缺席。
+   */
+  requestBodyUploadMs?: number;
 }
 
 export interface ModelRequestFailedStatusEvent extends ModelNetworkStatusBase {

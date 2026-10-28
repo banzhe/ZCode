@@ -1,5 +1,7 @@
 const MODEL_AUTH_HEADER_NAMES = new Set(["authorization", "x-api-key"]);
 export const MODEL_QUERY_SOURCE_HEADER = "x-zcode-query-source";
+/** runner 为每次物理尝试下发的请求标识；请求体上传观测据此把 `bodySent` 消息关联回本次请求。 */
+export const MODEL_REQUEST_ID_HEADER = "x-request-id";
 
 /** 请求用途由调用上下文拥有，不能从 Provider 静态配置或 SDK 默认 header 继承。 */
 export function withoutModelQuerySourceHeader(

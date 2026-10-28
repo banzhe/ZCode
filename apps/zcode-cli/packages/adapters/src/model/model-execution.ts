@@ -27,6 +27,10 @@ import { createModelRequestSecurityState } from "./request-security-edition/inde
 import type { ModelRequestSecurityState, ModelRequestSecurityPort } from "./request-security.js";
 import { createOpenAIResponsesJsonCompatFetch } from "./openai-responses-json-compat.js";
 import { createRequestBodyZstdFetch } from "./request-body-zstd/request-body-zstd-fetch.js";
+import {
+  createModelRequestBodyMetricsFetch,
+  type ModelRequestBodyMetrics,
+} from "./request-body-metrics.js";
 import { createModelOptionMapFetch, type RawRequestBodyCapture } from "./model-option-map-fetch.js";
 import { createNetworkProxyFetch } from "../network/proxy-fetch.js";
 import { createProviderEndpointRoutingFetch } from "./provider-endpoint-routing-fetch.js";
@@ -83,6 +87,8 @@ export interface AiSdkResolvedModel {
   providerOptions?: Record<string, unknown>;
   rawRequestBodyCapture?: RawRequestBodyCapture;
   requestObservations?: ModelRequestSecurityPort;
+  /** 本次请求的传输指标；每次 resolveRequest 新建，随请求结束发布到完成事件。 */
+  requestBodyMetrics?: ModelRequestBodyMetrics;
 }
 
 export interface AiSdkBoundModelResolution {
@@ -253,12 +259,14 @@ export class AiSdkModelExecution {
     // Model 创建时的 Provider 事实必须被冻结在当前 binding 中。若按 providerId 缓存
     // factory，配置更新后创建的新 Model 会错误复用旧 Endpoint / Header / API Key。
     const rawRequestBodyCapture: RawRequestBodyCapture = {};
+    const requestBodyMetrics: ModelRequestBodyMetrics = {};
     const factory = this.createFactory(
       snapshot.providerId,
       providerConfig,
       optionMaps,
       optionValues,
       rawRequestBodyCapture,
+      requestBodyMetrics,
       snapshot.supportsJsonSchemaOutput,
       snapshot.providerConfig.access?.type === "zhipu-account" ? requestAuth?.apiKeyId : undefined,
     );
@@ -272,6 +280,7 @@ export class AiSdkModelExecution {
       providerOptions: providerConfig.providerOptions,
       rawRequestBodyCapture,
       requestObservations: this.requestSecurity,
+      requestBodyMetrics,
     };
   }
 
@@ -281,6 +290,7 @@ export class AiSdkModelExecution {
     optionMaps: CompiledModelOptionMaps | undefined,
     optionValues: ModelOptionValues | undefined,
     rawRequestBodyCapture: RawRequestBodyCapture,
+    requestBodyMetrics: ModelRequestBodyMetrics,
     supportsJsonSchemaOutput: boolean,
     apiKeyId?: string,
   ): LanguageModelFactory {
@@ -301,10 +311,20 @@ export class AiSdkModelExecution {
       providerConfig,
       transport: providerTransport,
     });
+    // 观测层位于压缩层内层：它看到的是真正上线的请求体，上传耗时不包含本地压缩时间。
+    const measuredTransport = createModelRequestBodyMetricsFetch(
+      requestTransport,
+      requestBodyMetrics,
+    );
     // 压缩位于签名/网络 transport 之外，签名与抓包看到的仍是压缩前的 JSON 语义（见 model/http-proxy.md）。
     const bodyTransport = providerConfig.requestBodyZstd
-      ? createRequestBodyZstdFetch(requestTransport)
-      : requestTransport;
+      ? createRequestBodyZstdFetch(measuredTransport, {
+          onCompressed: (rawBytes, compressedBytes) => {
+            requestBodyMetrics.rawBytes = rawBytes;
+            requestBodyMetrics.compressedBytes = compressedBytes;
+          },
+        })
+      : measuredTransport;
     const fetch = createProviderBusinessErrorFetch({
       fetch: bodyTransport,
       providerId,

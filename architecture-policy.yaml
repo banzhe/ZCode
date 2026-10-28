@@ -913,3 +913,22 @@ exceptions:
     rule: unmanaged-new-file
     paths: [packages/zcode-server-cli/src/packaging/stepTimer.ts]
     reason: 发布链路的 `[ci][timer]` 计时原本在两个 CLI 入口各写一份，stageCli 的副本还带 `[stage]` 前缀，与 spec 声明的裸行格式不符（docs/specs/release-pipeline-build-reuse.md 规则 6）；该文件只做这一个日志格式的唯一出口，不引入新的 owner、契约或依赖方向，接管 packages/zcode-server-cli/src 需要单独的模块边界梳理。
+  - id: model-request-metrics-cli-unmanaged-files
+    rule: unmanaged-new-file
+    paths:
+      - apps/zcode-cli/packages/adapters/src/model/request-body-metrics.ts
+      - apps/zcode-cli/packages/adapters/src/model/request-upload-observation.ts
+      - apps/zcode-cli/packages/adapters/src/model/request-observations.ts
+      - apps/zcode-cli/packages/adapters/src/model/runner-attribution.ts
+      - apps/zcode-cli/packages/adapters/src/storage/session-store/migrations/0025-model-request-metrics.ts
+      - apps/zcode-cli/packages/bootstrap/src/zcode-protocol/session-request-metrics.ts
+      - apps/zcode-cli/packages/bootstrap/src/zcode-protocol/session-debug.ts
+      - packages/shared/src/session-debug.ts
+    reason: 请求传输指标链路（adapter 观测层、迁移、会话级聚合、协议 schema）按 docs/ui/composer-request-metrics.md 只新增一个只读诊断旁路：观测层挂在既有 model transport 链上，聚合只读 model_usage，schema 是 session-debug 的附加块。这些文件都落在既有 zcode-cli/shared 未受管根目录的兄弟文件之间（session-debug.ts、request-observations.ts、runner-attribution.ts 都是相对 merge-base 的新文件，本次只在其中复用同一个请求标识 header 常量或追加一个 optional 的 requestMetrics 块），不引入新的状态 owner 或跨层深导入；接管 packages/shared/src 与整个 CLI adapter 目录需要单独的模块边界梳理。
+  - id: composer-request-metrics-pill-unmanaged-files
+    rule: unmanaged-new-file
+    paths:
+      - packages/ui/src/chat-input-toolbar/RequestMetricsPill.tsx
+      - packages/ui/src/lib/byteSizeFormat.ts
+      - packages/ui/src/hooks/useSessionDebug.ts
+    reason: 输入框请求性能药丸及其字节格式化、debug 读取 hook 扩展都写在既有 UI 功能目录（chat-input-toolbar / lib / hooks），与同目录的 contextUsage.tsx、useSessionDebug.ts 并列；数据全部来自既有 services hook 与 session/debug 读入口，不新增服务构造或跨域深导入，接管 packages/ui/src 需要单独的模块边界重构。

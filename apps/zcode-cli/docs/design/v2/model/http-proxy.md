@@ -52,6 +52,17 @@ Provider 配置的 `api` 对象新增可选布尔字段 `requestBodyZstd`，默�
 - 关闭时请求保持原样，不得残留 `content-encoding`。
 - 该功能不做服务端能力探测。服务端不支持 `Content-Encoding: zstd` 时请求会失败，由用户在确认服务端支持后手动开启；失败按普通 provider HTTP 错误处理，不自动回退为未压缩请求。
 
+## Provider 请求传输指标
+
+模型请求在 `requestTransport` 之上、zstd 层之**内**挂一层观测 fetch（`request-body-metrics.ts`），只观测、不重建请求体，也不改变代理、证书、重试与取消语义。
+
+- `requestBodyBytes`：压缩前请求体字节数。优先取 `content-length`（zstd 层写入的是压缩后长度，因此该值由 zstd 观测回调上报），否则在 body 是字符串/二进制时取字节长度；流式 body 跳过，绝不为了测量消费请求体。
+- `requestBodyCompressedBytes`：zstd 压缩后字节数，仅当 Provider 开启 `requestBodyZstd` 且压缩真的发生时上报。
+- `requestBodyUploadMs`：请求体**上传完成**耗时，从交给 transport 到 undici 发布 `undici:request:bodySent`。该信号自 undici v6.3.0 提供，语义是「请求体已全部写入底层 socket」，是客户端发送成本；它**不**包含服务端排队与首包等待，也**不**表示服务端已收到。
+- 关联方式：订阅 `undici:request:bodySent` 后按消息里 `request.headers` 的 `x-request-id` 匹配本次物理尝试（runner 已为每次尝试下发该头），不新增请求头。观测器按需订阅/注销、注册表有界并带 TTL，回调在 undici 内部同步执行且全部 `try/catch` 包裹。
+- 拿不到信号（非 undici 传输、无该头、通道缺失）时指标缺席，`model_request_completed` 不带该字段；禁止回退成「到响应头」时刻，因为那一段与 TTFT 重叠。
+- 三个字段进入 `model_request_completed` 后由 `core` 写入 `model_usage.request_metrics_json`，供 `session/debug(scope=requestMetrics)` 聚合展示（见 [输入框请求性能药丸](../../../../../docs/ui/composer-request-metrics.md)）。
+
 ## 行为
 
 - 代理解析逻辑由 adapter 统一实现，并同时服务模型请求与 `HttpClientPort`。
@@ -96,3 +107,4 @@ Provider 配置的 `api` 对象新增可选布尔字段 `requestBodyZstd`，默�
 - 走代理时上游回 `999` / `204` / `304`：`HttpClientPort` 带回原状态码（204 / 304 正文为空）；proxy-aware fetch 对 204 / 304 返回空正文的 `Response`，对 `999` 以 `ZCODE_UNSUPPORTED_HTTP_STATUS` 失败；两者都不产生 uncaughtException（`packages/adapters/tests/http-response-status.test.ts`）。
 - 架构测试扫描进程内源码，防止新增直接 HTTP 出口绕过统一网络边界。
 - `requestBodyZstd` 缺省或 `false` 时请求体与请求头保持原样；开启后请求体可被 `zlib.zstdDecompressSync` 还原为原 JSON，`content-encoding: zstd` 与压缩后 `content-length` 正确，`GET` 不压缩，签名与 `RawRequestBodyCapture` 记录压缩前语义。
+- 请求传输指标：字符串/字节/`content-length` 三种来源都能得到请求体字节数且不改写请求体；`x-request-id` 命中后 `undici:request:bodySent` 得到上传耗时；无该头或流式请求体时指标缺席但请求照常发出；观测回调抛错不影响请求（`packages/adapters/tests/request-body-metrics.test.ts`、`request-upload-observation.test.ts`）。

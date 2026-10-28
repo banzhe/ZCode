@@ -842,7 +842,7 @@ export class ZCodeProtocolAgentServer {
       case zcodeProtocolMethods.usageStats:
         return await getUsageStats(this.context, request.params);
       case zcodeProtocolMethods.sessionDebug:
-        return querySessionDebug(this.context, request.params);
+        return await querySessionDebug(this.context, request.params);
       case zcodeProtocolMethods.sessionUsage:
         return await getTaskTokenUsage(this.context, request.params);
       default:

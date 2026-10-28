@@ -7,13 +7,26 @@
 export type ModelRequestBodyZstdFetch = typeof globalThis.fetch;
 
 /**
+ * 压缩结果观测回调。
+ *
+ * 只用于观测请求体压缩前后字节数（例如请求性能面板的压缩率），不参与压缩与请求决策。
+ * 调用发生在压缩完成、请求发出之前；实现抛错必须被吞掉，绝不能影响请求。
+ */
+export interface ModelRequestBodyZstdObserver {
+  onCompressed?(rawBytes: number, compressedBytes: number): void;
+}
+
+/**
  * 包装一个模型请求 transport，使请求体以 zstd 发送。
  *
  * 前置：`baseFetch` 为已完成签名/网络装配的 transport；压缩应位于 Option Map 改写之后。
  * 后置：有请求体的请求以 zstd 压缩并设置 `content-encoding: zstd` 与压缩后 `content-length`；
- *       GET/HEAD 与空请求体原样透传。
+ *       GET/HEAD 与空请求体原样透传；提供 `observer` 时额外上报压缩前后字节。
  * 幂等：每次调用独立压缩，不缓存、不修改输入 Request。
  * 事件：不发出任何事件；不写持久化状态。
  * 失败：读取请求体或压缩失败时以原始错误 reject，不回退为未压缩请求。
  */
-export type CreateRequestBodyZstdFetch = (baseFetch: ModelRequestBodyZstdFetch) => ModelRequestBodyZstdFetch;
+export type CreateRequestBodyZstdFetch = (
+  baseFetch: ModelRequestBodyZstdFetch,
+  observer?: ModelRequestBodyZstdObserver,
+) => ModelRequestBodyZstdFetch;

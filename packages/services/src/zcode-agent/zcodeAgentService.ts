@@ -4250,7 +4250,10 @@ export function createZCodeAgentService(
       const client = await getReadOnlyClient(params, "existing-only");
       return client.request(
         zcodeProtocolMethods.sessionDebug,
-        { sessionId: params.sessionId },
+        {
+          sessionId: params.sessionId,
+          ...(params.scope ? { scope: params.scope } : {}),
+        },
         sessionDebugSnapshotSchema,
       );
     },

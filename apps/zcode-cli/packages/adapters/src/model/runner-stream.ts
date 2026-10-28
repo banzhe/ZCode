@@ -89,6 +89,7 @@ import {
   providerRequestIdFromHeaders,
   readModelFailureErrorPhase,
 } from "./runner-telemetry.js";
+import { requestBodyMetricsFields } from "./request-body-metrics.js";
 import { repairReasoningHistoryAfterSignatureRejection } from "./reasoning-history-normalization.js";
 
 type StreamFailurePhase = "request_setup" | "response_body";
@@ -638,6 +639,7 @@ export async function* runStreamText(input: {
             streamMaxIdleMs: streamMaxIdleMs || undefined,
             streamStallCount,
             streamOutputCommitted,
+            ...requestBodyMetricsFields(resolved.requestBodyMetrics),
             timestamp: new Date(completedAt).toISOString(),
             type: "model_request_completed",
           },

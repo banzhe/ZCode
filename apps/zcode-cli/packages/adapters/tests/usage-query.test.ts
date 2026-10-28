@@ -406,3 +406,117 @@ describe("queryTaskUsage", () => {
     }
   });
 });
+
+describe("querySessionRequestMetrics", () => {
+  it("selects only main-turn rows with metrics, in stable order, and tolerates malformed JSON", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "zcode-request-metrics-"));
+    const dbPath = join(tempRoot, "session.sqlite");
+    const store = await createSqliteSessionStore({ dbPath });
+    const sessionID = createSessionId("rm");
+    // 取未来基准：recordModelUsage 会顺手 prune 掉 30 天前的行，远古时间戳会被立刻清掉。
+    const now = 1_900_000_000_000;
+    try {
+      await store.createSession({
+        id: sessionID,
+        projectID: createProjectId("rm"),
+        slug: "rm",
+        directory: tempRoot,
+        title: "rm",
+        version: "0.1.0",
+      });
+      const base = {
+        logicalRequestId: "logical",
+        sessionID,
+        providerId: "p",
+        modelId: "model-a",
+        status: "completed" as const,
+      };
+      await store.recordModelUsage({
+        ...base,
+        id: "m-1",
+        querySource: "main_turn",
+        startedAt: now,
+        outputTokens: 120,
+        requestMetrics: {
+          requestBodyBytes: 1_000,
+          requestBodyCompressedBytes: 200,
+          requestBodyUploadMs: 40,
+          providerDurationMs: 5_000,
+          providerTimeToFirstContentMs: 2_000,
+        },
+      });
+      // sidecar 请求不进入请求性能统计。
+      await store.recordModelUsage({
+        ...base,
+        id: "m-title",
+        querySource: "session_title",
+        startedAt: now + 50,
+        requestMetrics: { requestBodyBytes: 9_999 },
+      });
+      // 没有指标的旧行不参与。
+      await store.recordModelUsage({
+        ...base,
+        id: "m-legacy",
+        querySource: "main_turn",
+        startedAt: now + 60,
+        outputTokens: 10,
+      });
+      await store.recordModelUsage({
+        ...base,
+        id: "m-2",
+        querySource: "main_turn",
+        startedAt: now + 100,
+        outputTokens: 60,
+        requestMetrics: { requestBodyBytes: 3_000, providerDurationMs: 2_000 },
+      });
+
+      const rows = await store.querySessionRequestMetrics({ sessionID });
+
+      expect(rows.map((row) => row.id)).toEqual(["m-1", "m-2"]);
+      expect(rows[0]).toMatchObject({
+        startedAt: now,
+        outputTokens: 120,
+        metrics: { requestBodyBytes: 1_000, requestBodyUploadMs: 40 },
+      });
+      expect(rows[1]?.metrics).toEqual({ requestBodyBytes: 3_000, providerDurationMs: 2_000 });
+      expect(rows[1]?.metrics.providerTimeToFirstContentMs).toBeUndefined();
+    } finally {
+      store.close();
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("skips rows whose metrics JSON is valid JSON but not a metric record", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "zcode-request-metrics-bad-"));
+    const dbPath = join(tempRoot, "session.sqlite");
+    const store = await createSqliteSessionStore({ dbPath });
+    const sessionID = createSessionId("rm-bad");
+    const now = 1_900_000_000_000;
+    try {
+      await store.createSession({
+        id: sessionID,
+        projectID: createProjectId("rm-bad"),
+        slug: "rm-bad",
+        directory: tempRoot,
+        title: "rm-bad",
+        version: "0.1.0",
+      });
+      await store.recordModelUsage({
+        id: "m-array",
+        logicalRequestId: "logical",
+        sessionID,
+        querySource: "main_turn",
+        providerId: "p",
+        modelId: "model-a",
+        status: "completed",
+        startedAt: now,
+        requestMetrics: [1, 2, 3] as never,
+      });
+
+      expect(await store.querySessionRequestMetrics({ sessionID })).toEqual([]);
+    } finally {
+      store.close();
+      await rm(tempRoot, { force: true, recursive: true });
+    }
+  });
+});

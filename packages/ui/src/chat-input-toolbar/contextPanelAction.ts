@@ -10,3 +10,19 @@ export function runContextPanelActionWithClose({
   close();
   action?.();
 }
+
+/**
+ * Radix HoverCard 会在 touchstart 中阻止后续 click，手机端无法靠 click 打开面板；
+ * 触摸 pointerdown 阶段需要自行打开，桌面端继续保持原有 hover/focus 语义。
+ */
+export function isHoverlessTouchPointerDown(event: {
+  defaultPrevented: boolean;
+  pointerType?: string;
+}): boolean {
+  return (
+    !event.defaultPrevented &&
+    event.pointerType === "touch" &&
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(hover: none)").matches === true
+  );
+}

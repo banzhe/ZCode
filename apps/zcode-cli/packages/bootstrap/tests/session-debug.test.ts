@@ -90,15 +90,76 @@ describe("session debug observation", () => {
     },
   );
 
-  it("querying cannot resume a cold session or alter activity", () => {
+  it("querying cannot resume a cold session or alter activity", async () => {
     const target = { ...record(), updatedAt: 123 };
     const context = { sessions: new Map([["session-1", target]]), deps: {} };
-    expect(querySessionDebug(context as never, { sessionId: "session-1" }).rounds).toEqual([]);
+    expect((await querySessionDebug(context as never, { sessionId: "session-1" })).rounds).toEqual(
+      [],
+    );
     expect(target.updatedAt).toBe(123);
-    expect(() => querySessionDebug(context as never, { sessionId: "cold" })).toThrow(
+    await expect(querySessionDebug(context as never, { sessionId: "cold" })).rejects.toThrow(
       "Session is not active",
     );
     expect(context.sessions.size).toBe(1);
+  });
+
+  it("requestMetrics scope returns only persisted metrics without live observation payload", async () => {
+    const target = record();
+    observeSessionDebug(target, event(1));
+    const context = {
+      sessions: new Map([["session-1", target]]),
+      deps: {
+        sessionStore: {
+          querySessionRequestMetrics: async () => [
+            {
+              id: "model-1",
+              startedAt: 1_000,
+              outputTokens: 120,
+              metrics: {
+                requestBodyBytes: 1_000,
+                requestBodyCompressedBytes: 200,
+                requestBodyUploadMs: 400,
+                providerDurationMs: 5_000,
+                providerTimeToFirstContentMs: 2_000,
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const scoped = sessionDebugSnapshotSchema.parse(
+      await querySessionDebug(context as never, { sessionId: "session-1", scope: "requestMetrics" }),
+    );
+
+    expect(scoped.rounds).toEqual([]);
+    expect(scoped.networkEntries).toEqual([]);
+    expect(scoped.cache).toBeNull();
+    expect(scoped.requestMetrics).toMatchObject({
+      last: { requestBodyBytes: 1_000, decodeTps: 40, timeToFirstContentMs: 2_000 },
+      aggregate: { requestBodySampleCount: 1, totalRequestBodyBytes: 1_000 },
+    });
+
+    // 缺省 scope 仍是完整 live 观测快照，且不带持久化块。
+    const full = sessionDebugSnapshotSchema.parse(
+      await querySessionDebug(context as never, { sessionId: "session-1" }),
+    );
+    expect(full.rounds).toHaveLength(1);
+    expect(full.requestMetrics).toBeUndefined();
+  });
+
+  it("requestMetrics scope degrades to empty metrics when the store lacks the capability", async () => {
+    const target = record();
+    const context = { sessions: new Map([["session-1", target]]), deps: {} };
+
+    const scoped = sessionDebugSnapshotSchema.parse(
+      await querySessionDebug(context as never, { sessionId: "session-1", scope: "requestMetrics" }),
+    );
+
+    expect(scoped.requestMetrics).toMatchObject({
+      last: null,
+      aggregate: { requestBodySampleCount: 0, tpsSampleCount: 0, averageDecodeTps: null },
+    });
   });
 
   it("keeps zero output but never adds reasoning to the TPS numerator", () => {

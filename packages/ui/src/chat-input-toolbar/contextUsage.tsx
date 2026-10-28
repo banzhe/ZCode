@@ -51,7 +51,10 @@ import {
   hasChatStartPlanBalance,
   type ChatStartPlanBalanceConfig,
 } from "@/chat-input-toolbar/StartPlanContextBalance.js";
-import { runContextPanelActionWithClose } from "@/chat-input-toolbar/contextPanelAction.js";
+import {
+  isHoverlessTouchPointerDown,
+  runContextPanelActionWithClose,
+} from "@/chat-input-toolbar/contextPanelAction.js";
 import { coordinateCodingPlanQuotaResetAutoPlay } from "@/chat-input-toolbar/codingPlanQuotaResetAutoPlay.js";
 import { formatCompactTokenNumber } from "@/lib/tokenNumberFormat.js";
 import {
@@ -975,18 +978,9 @@ export function ChatContextUsage({
             data-chat-toolbar-popover-trigger="true"
             data-testid={TID_CHAT_CONTEXT_USAGE_TRIGGER}
             onPointerDown={(event) => {
-              // Radix HoverCard 会在 touchstart 中阻止后续 click，手机端无法打开面板；
-              // 在触摸 pointerdown 阶段先打开，桌面端继续保持原有 hover/focus 语义。
-              if (
-                !event.defaultPrevented &&
-                event.pointerType === "touch" &&
-                typeof window !== "undefined" &&
-                window.matchMedia?.("(hover: none)").matches
-              ) {
-                // 统一走受控 open handler，确保触摸打开也会触发额度 access 刷新和刷新态反馈。
-                if (!contextOpen) {
-                  handleContextOpenChange(true);
-                }
+              // 统一走受控 open handler，确保触摸打开也会触发额度 access 刷新和刷新态反馈。
+              if (isHoverlessTouchPointerDown(event) && !contextOpen) {
+                handleContextOpenChange(true);
               }
             }}
           />

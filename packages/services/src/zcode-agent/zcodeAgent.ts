@@ -84,6 +84,7 @@ import type {
   ZCodeWorkspaceGenerateTextParams,
   ZCodeWorkspaceHookTrustGrantResult,
   ZCodeAutomationBotDeliveryTarget,
+  SessionDebugScope,
 } from "@zcode/shared";
 import type {
   ClientHello,
@@ -176,6 +177,16 @@ import type {
 
 export interface ZCodeAgentSessionTarget extends ZCodeAgentWorkspaceTarget {
   sessionId: string;
+}
+
+/**
+ * `session/debug` 的读取范围。
+ *
+ * `requestMetrics` 只取持久化的请求指标（请求体/上传耗时/TPS/TTFT），用于输入框药丸的
+ * 轻量刷新；缺省保持既有完整 live 观测快照，不改变开发者工具面板的行为。
+ */
+export interface ZCodeAgentReadSessionDebugParams extends ZCodeAgentSessionTarget {
+  scope?: SessionDebugScope;
 }
 
 export interface ZCodeAgentResumeSessionParams extends ZCodeAgentSessionTarget {
@@ -652,7 +663,7 @@ export interface IZCodeAgentService {
   readSessionMessages(
     params: ZCodeAgentReadSessionMessagesParams,
   ): Promise<ZCodeMessageWithParts[]>;
-  readSessionDebug(params: ZCodeAgentSessionTarget): Promise<SessionDebugSnapshot>;
+  readSessionDebug(params: ZCodeAgentReadSessionDebugParams): Promise<SessionDebugSnapshot>;
   readSessionEvents(params: ZCodeAgentReadSessionEventsParams): Promise<ZCodeSessionEvent[]>;
   readWorkspacePresentation(
     params: ZCodeAgentReadWorkspacePresentationParams,

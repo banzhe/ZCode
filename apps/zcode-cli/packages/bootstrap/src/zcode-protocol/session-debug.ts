@@ -2,17 +2,24 @@ import {
   SessionEventType,
   type ModelNetworkStatusPayload,
   type SessionEvent,
+  type SessionId,
+  type UsageStorePort,
 } from "@zcode/contracts";
 import {
   SESSION_DEBUG_LIMITS,
+  SESSION_DEBUG_SCOPE_REQUEST_METRICS,
   calculateOutputTps,
   sessionDebugParamsSchema,
   zcodeTaskNetworkDebugStatusFromPayload,
   type SessionDebugSnapshot,
 } from "@zcode/shared";
 import { requireSession, type ZCodeProtocolAgentServerContext } from "./server-types.js";
+import {
+  aggregateSessionRequestMetrics,
+  emptySessionRequestMetrics,
+} from "./session-request-metrics.js";
 
-type SessionRecord = { app: { sessionId: string } };
+type SessionRecord = { app: { sessionId: SessionId } };
 interface Observation {
   snapshot: SessionDebugSnapshot;
   seenEvents: Set<string>;
@@ -151,10 +158,34 @@ export function readSessionDebug(record: SessionRecord): SessionDebugSnapshot {
   return observations.get(record)?.snapshot ?? emptySnapshot(record.app.sessionId);
 }
 
-export function querySessionDebug(
+/**
+ * `session/debug` 的唯一读入口。
+ *
+ * `scope: "requestMetrics"` 只读持久化的请求指标（`model_usage`），payload 与 live 观测解耦：
+ * 手机远控每次刷新不需要拉 200 条 rounds 与 100 条带 header 的网络记录。
+ * 缺省 scope 保持既有 live 观测快照语义不变；两者都不启动/恢复任务。
+ */
+export async function querySessionDebug(
   context: ZCodeProtocolAgentServerContext,
   rawParams: unknown,
-): SessionDebugSnapshot {
+): Promise<SessionDebugSnapshot> {
   const params = sessionDebugParamsSchema.parse(rawParams);
-  return readSessionDebug(requireSession(context, params.sessionId));
+  const record = requireSession(context, params.sessionId);
+  if (params.scope === SESSION_DEBUG_SCOPE_REQUEST_METRICS)
+    return {
+      ...emptySnapshot(params.sessionId),
+      requestMetrics: await readSessionRequestMetrics(context, record.app.sessionId),
+    };
+  return readSessionDebug(record);
+}
+
+async function readSessionRequestMetrics(
+  context: ZCodeProtocolAgentServerContext,
+  sessionId: SessionId,
+) {
+  const store = context.deps.sessionStore as Partial<UsageStorePort> | undefined;
+  // 旧实现/内存态 store 没有该能力：返回空指标，让 UI 隐藏药丸，绝不用其它口径凑数。
+  if (!store?.querySessionRequestMetrics) return emptySessionRequestMetrics(sessionId);
+  const rows = await store.querySessionRequestMetrics({ sessionID: sessionId });
+  return aggregateSessionRequestMetrics({ sessionId, rows });
 }

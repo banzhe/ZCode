@@ -928,6 +928,32 @@ export interface ModelUsageRecord {
   errorMessage?: string;
   rawUsage?: unknown;
   providerMetadata?: unknown;
+  /** 请求级传输指标；缺字段表示该次请求无法测量，不写占位值。 */
+  requestMetrics?: ModelRequestMetricsRecord;
+}
+
+/**
+ * 单次模型请求的传输指标。
+ *
+ * 时间口径刻意分成两套：
+ * - `providerDurationMs` / `providerTimeToFirstContentMs` 是 provider 请求时钟（adapter 观测），
+ *   与 `duration_ms` / `time_to_first_token_ms` 的 runtime 时钟不同，不能互相替代。
+ * - `requestBodyUploadMs` 是客户端把请求体写入底层 socket 完成的耗时，不含服务端等待与 TTFT。
+ */
+export interface ModelRequestMetricsRecord {
+  requestBodyBytes?: number;
+  requestBodyCompressedBytes?: number;
+  requestBodyUploadMs?: number;
+  providerDurationMs?: number;
+  providerTimeToFirstContentMs?: number;
+}
+
+/** 请求指标聚合的行输入；只有主轮且带指标的请求会被选中。 */
+export interface SessionRequestMetricsRow {
+  id: string;
+  startedAt: number;
+  outputTokens?: number;
+  metrics: ModelRequestMetricsRecord;
 }
 
 export interface TurnUsageRecord {
@@ -1084,6 +1110,13 @@ export interface UsageStorePort {
   pruneUsage(input?: { beforeTime?: number }): Promise<void>;
   queryAppUsage(input: AppUsageQueryInput): Promise<AppUsageQueryResult>;
   queryTaskUsage(input: TaskUsageQueryInput): Promise<TaskUsageQueryResult>;
+  /**
+   * 可选能力：会话内主轮请求的传输指标行。缺席（内存态 store 或旧实现）时调用方按「无指标」处理，
+   * 不伪造 0。read-only，不启动/恢复任务。
+   */
+  querySessionRequestMetrics?(input: {
+    sessionID: SessionId;
+  }): Promise<SessionRequestMetricsRow[]>;
 }
 
 export interface LocalSettingStorePort {

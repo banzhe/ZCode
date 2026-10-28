@@ -1,4 +1,5 @@
 import type { ModelRequestObservation } from "@zcode/contracts";
+import { MODEL_REQUEST_ID_HEADER } from "./model-request-headers.js";
 
 const MAX_TRACKED_REQUESTS = 64;
 
@@ -33,7 +34,10 @@ export function readRequestObservationId(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
 ): string | undefined {
-  const fromInit = init?.headers ? new Headers(init.headers).get("x-request-id") : null;
-  const value = fromInit ?? (input instanceof Request ? input.headers.get("x-request-id") : null);
+  const fromInit = init?.headers
+    ? new Headers(init.headers).get(MODEL_REQUEST_ID_HEADER)
+    : null;
+  const value =
+    fromInit ?? (input instanceof Request ? input.headers.get(MODEL_REQUEST_ID_HEADER) : null);
   return value?.trim() || undefined;
 }

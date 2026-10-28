@@ -5,6 +5,7 @@ import { SESSION_DATABASE_IDENTITY_MIGRATION } from "@zcode/shared/sqlite-migrat
 
 import { OFFICIAL_GLM_SELECTION_MIGRATION_SQL } from "./migrations/0021-official-glm-selection.js";
 import { BACKFILLED_SESSION_REASONING_MIGRATION_SQL } from "./migrations/0022-backfilled-session-reasoning.js";
+import { MODEL_REQUEST_METRICS_MIGRATION_SQL } from "./migrations/0025-model-request-metrics.js";
 
 export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
   {
@@ -984,4 +985,10 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
     `,
   },
   { ...SESSION_DATABASE_IDENTITY_MIGRATION, touchedTables: ["zcode_database_identity"] },
+  {
+    appVersion: "0.16.9",
+    id: "0025_model_request_metrics",
+    sql: MODEL_REQUEST_METRICS_MIGRATION_SQL,
+    touchedTables: ["model_usage"],
+  },
 ];

@@ -53,16 +53,5 @@ export function formatPercent(value: number): string {
   return `${roundPercent(value).toFixed(1)}%`;
 }
 
-const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"] as const;
-
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < BYTE_UNITS.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  const digits = unitIndex === 0 ? 0 : value >= 100 ? 0 : 1;
-  return `${value.toFixed(digits)} ${BYTE_UNITS[unitIndex]}`;
-}
+// 字节格式化已迁到共享 lib（请求性能面板同口径）；这里保留 re-export 不改变本模块公开面。
+export { formatBytes } from "@/lib/byteSizeFormat.js";

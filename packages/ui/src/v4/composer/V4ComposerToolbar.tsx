@@ -44,6 +44,7 @@ import { Button } from "@/components/ui/button.js";
 import { HighspeedModelIndicator } from "@/highspeed/HighspeedModelIndicator.js";
 import { formatHighspeedRemainingTime } from "@/highspeed/highspeedTime.js";
 import { ChatContextUsage } from "@/chat-input-toolbar/display.js";
+import { RequestMetricsPill } from "@/chat-input-toolbar/RequestMetricsPill.js";
 import {
   hasChatCodingPlanUsageRemaining,
   type ChatCodingPlanUsageRemainingConfig,
@@ -446,6 +447,8 @@ function V4ComposerModelControlsImpl({
   modelSelectionState = MODEL_SELECTION_LOADING_STATE,
   modelSelectionReload,
   modelSelectionRefresh,
+  sessionId,
+  phase,
   provider,
   isWebRemoteControl = false,
   isMobileViewport = false,
@@ -1260,6 +1263,15 @@ function V4ComposerModelControlsImpl({
         data-usage-used={usage?.contextWindow?.usedTokens ?? ""}
         data-usage-max={usage?.contextWindow?.maxTokens ?? ""}
         className="hidden"
+      />
+      {/* 请求性能药丸位于上下文指示器左侧：先给「刚才那轮有多快」，再看「上下文还剩多少」。 */}
+      <RequestMetricsPill
+        workspacePath={workspacePath}
+        workspaceIdentity={workspaceIdentity}
+        sessionId={sessionId}
+        phase={phase}
+        usage={usage}
+        enabled={!draftMode}
       />
       {/* Highspeed 卡激活即锁定模型；不能等动效交接完成才隐藏，否则 usage 圈圈会短暂闪现。 */}
       {!modelLocked ? (

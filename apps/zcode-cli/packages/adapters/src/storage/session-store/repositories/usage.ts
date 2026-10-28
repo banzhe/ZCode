@@ -6,6 +6,8 @@ import type {
   AppUsageQueryInput,
   AppUsageQueryResult,
   AppUsageToolRow,
+  ModelRequestMetricsRecord,
+  SessionRequestMetricsRow,
   TaskUsageQueryInput,
   TaskUsageQueryResult,
   ModelUsageRecord,
@@ -69,13 +71,15 @@ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord
         error_code,
         error_message,
         raw_usage_json,
-        provider_metadata_json
+        provider_metadata_json,
+        request_metrics_json
       )
       values (
         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?
       )
       on conflict(id) do update set
         logical_request_id = excluded.logical_request_id,
@@ -116,7 +120,8 @@ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord
         error_code = excluded.error_code,
         error_message = excluded.error_message,
         raw_usage_json = excluded.raw_usage_json,
-        provider_metadata_json = excluded.provider_metadata_json
+        provider_metadata_json = excluded.provider_metadata_json,
+        request_metrics_json = excluded.request_metrics_json
       `,
   ).run(
     input.id,
@@ -159,6 +164,7 @@ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord
     input.errorMessage ?? null,
     encodeJson(input.rawUsage),
     encodeJson(input.providerMetadata),
+    input.requestMetrics ? encodeJson(input.requestMetrics) : null,
   );
   await pruneUsage(db);
 }
@@ -671,6 +677,86 @@ export async function queryTaskUsage(
     modelErrorCount,
     inputBaselineBySource,
   };
+}
+
+/**
+ * 会话内主轮请求的传输指标行（只读）。
+ *
+ * 只选主轮且带指标的行：sidecar（标题、压缩、子代理）不进入请求性能统计；
+ * 旧行 `request_metrics_json` 为 NULL，按「无法测量」参与不到任何平均。
+ * 聚合交给调用方，SQL 只负责稳定的行选择与顺序。
+ */
+export async function querySessionRequestMetrics(
+  db: DatabaseSync,
+  input: { sessionID: string },
+): Promise<SessionRequestMetricsRow[]> {
+  const rows = db
+    .prepare(
+      `select
+         id,
+         started_at as startedAt,
+         output_tokens as outputTokens,
+         request_metrics_json as metricsJson
+       from model_usage
+       where session_id = ?
+         and query_source = 'main_turn'
+         and request_metrics_json is not null
+         and json_valid(request_metrics_json)
+       order by started_at asc, id asc`,
+    )
+    .all(input.sessionID) as Array<{
+    id: string;
+    startedAt: number;
+    outputTokens: number | null;
+    metricsJson: string;
+  }>;
+  const result: SessionRequestMetricsRow[] = [];
+  for (const row of rows) {
+    // json_valid 只保证语法；字段类型仍可能被旧版本或外部写入破坏，这里逐行容错。
+    const metrics = parseRequestMetrics(row.metricsJson);
+    if (!metrics) continue;
+    const outputTokens = nonNegativeNumber(row.outputTokens);
+    result.push({
+      id: row.id,
+      startedAt: Number(row.startedAt),
+      ...(outputTokens === undefined ? {} : { outputTokens }),
+      metrics,
+    });
+  }
+  return result;
+}
+
+function parseRequestMetrics(value: string): ModelRequestMetricsRecord | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  const record = parsed as Record<string, unknown>;
+  const metrics: ModelRequestMetricsRecord = {
+    ...metricField("requestBodyBytes", record.requestBodyBytes),
+    ...metricField("requestBodyCompressedBytes", record.requestBodyCompressedBytes),
+    ...metricField("requestBodyUploadMs", record.requestBodyUploadMs),
+    ...metricField("providerDurationMs", record.providerDurationMs),
+    ...metricField("providerTimeToFirstContentMs", record.providerTimeToFirstContentMs),
+  };
+  return Object.keys(metrics).length > 0 ? metrics : undefined;
+}
+
+function metricField<K extends keyof ModelRequestMetricsRecord>(
+  key: K,
+  value: unknown,
+): Pick<ModelRequestMetricsRecord, K> | Record<string, never> {
+  const parsed = nonNegativeNumber(value);
+  if (parsed === undefined) return {};
+  return { [key]: parsed } as Pick<ModelRequestMetricsRecord, K>;
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
+  return value;
 }
 
 function inputSideTokensFromNormalizedUsage(

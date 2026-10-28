@@ -139,7 +139,7 @@ CREATE TABLE model_usage (
         error_message text,
         raw_usage_json text,
         provider_metadata_json text
-      );
+      , request_metrics_json text);
 
 CREATE TABLE part (
         id text primary key,

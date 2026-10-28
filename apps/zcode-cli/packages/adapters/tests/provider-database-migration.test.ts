@@ -84,11 +84,21 @@ describe("DB109 会话库正式数据迁移", () => {
       .sort();
     expect(allTables).toEqual([...unrelated, "session", "session_entry", "message", "part"].sort());
     expect(allTables).toHaveLength(22);
-    const before = unrelated.map((table) => db.prepare(`SELECT * FROM ${table}`).all());
+    const snapshot = (table: string) => db.prepare(`SELECT * FROM ${table}`).all();
+    const before = unrelated.map((table) => snapshot(table));
     const ledger = db.prepare("SELECT * FROM schema_migration ORDER BY id").all();
     entry({ providerId: legacyProvider, modelId: "GLM-5.3" });
     store = await createSqliteSessionStore({ dbPath: path });
-    expect(unrelated.map((table) => db.prepare(`SELECT * FROM ${table}`).all())).toEqual(before);
+    // 迁移可以给无关表加列（0025 给 model_usage 加了 request_metrics_json），但不得改动既有列的值：
+    // 比较前把迁移后的行投影到迁移前的列集合，避免以后每加一列都要改这条断言。
+    expect(
+      unrelated.map((table, index) => {
+        const columns = Object.keys(before[index]?.[0] ?? {});
+        return snapshot(table).map((row) =>
+          Object.fromEntries(columns.map((column) => [column, row[column]])),
+        );
+      }),
+    ).toEqual(before);
     expect(
       db.prepare("SELECT * FROM schema_migration WHERE id<? ORDER BY id").all(migrationId),
     ).toEqual(ledger);

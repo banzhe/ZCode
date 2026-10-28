@@ -14,7 +14,7 @@ const ZSTD_CONTENT_ENCODING = "zstd";
  * RawRequestBodyCapture 看到的仍是压缩前的 JSON 语义。
  * GET / HEAD 等无请求体请求原样透传，不压缩也不设置 content-encoding。
  */
-export const createRequestBodyZstdFetch: CreateRequestBodyZstdFetch = (baseFetch) => {
+export const createRequestBodyZstdFetch: CreateRequestBodyZstdFetch = (baseFetch, observer) => {
   return async (input, init) => {
     const request = new Request(input, init);
     if (request.method === "GET" || request.method === "HEAD") {
@@ -30,6 +30,13 @@ export const createRequestBodyZstdFetch: CreateRequestBodyZstdFetch = (baseFetch
     const headers = new Headers(request.headers);
     headers.set(CONTENT_ENCODING_HEADER, ZSTD_CONTENT_ENCODING);
     headers.set(CONTENT_LENGTH_HEADER, String(compressed.byteLength));
+
+    // 观测回调只服务诊断；抛错不得改变压缩语义或请求结果。
+    try {
+      observer?.onCompressed?.(body.byteLength, compressed.byteLength);
+    } catch {
+      /* 仅丢弃观测 */
+    }
 
     return baseFetch(request.url, {
       method: request.method,

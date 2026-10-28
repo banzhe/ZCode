@@ -11,11 +11,10 @@ import type {
 } from "@zcode/contracts";
 import { ModelApiActorKind, ModelApiOperation, ModelRequestSessionType } from "@zcode/contracts";
 import { isOpenCodeGoBaseUrl } from "./opencode-session.js";
-import { MODEL_QUERY_SOURCE_HEADER } from "./model-request-headers.js";
+import { MODEL_QUERY_SOURCE_HEADER, MODEL_REQUEST_ID_HEADER } from "./model-request-headers.js";
 import type { ModelStatusContext } from "./runner-status.js";
 
 const MODEL_TRACE_HEADER = "x-zcode-trace-id";
-const MODEL_REQUEST_HEADER = "x-request-id";
 const MODEL_SESSION_HEADER = "x-session-id";
 const MODEL_QUERY_HEADER = "x-query-id";
 // Coding Plan 服务端使用该请求级 Header 区分 main/subagent/side_chat/other 来源。
@@ -40,7 +39,7 @@ export function createModelRequestAttributionHeaders(
     : undefined;
   // 只把跨 provider 网络边界需要的观测归因字段写入 header，span 等细粒度信息仍留在事件和日志里。
   return {
-    [MODEL_REQUEST_HEADER]: statusContext.requestId,
+    [MODEL_REQUEST_ID_HEADER]: statusContext.requestId,
     [MODEL_SESSION_TYPE_HEADER]: isModelRequestSessionType(statusContext.modelRequestSessionType)
       ? statusContext.modelRequestSessionType
       : ModelRequestSessionType.Other,

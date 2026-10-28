@@ -55,4 +55,59 @@ describe("模型请求体 zstd 压缩", () => {
 
     expect(seen[0]!.headers.get("content-encoding")).toBeNull();
   });
+
+  it("observer 上报压缩前后字节，且不改变压缩语义", async () => {
+    const { fetch, seen } = captureFetch();
+    const observed: Array<[number, number]> = [];
+    const wrapped = createRequestBodyZstdFetch(fetch, {
+      onCompressed: (rawBytes, compressedBytes) => observed.push([rawBytes, compressedBytes]),
+    });
+    const raw = JSON.stringify(PAYLOAD);
+
+    await wrapped("https://provider.test/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: raw,
+    });
+
+    expect(observed).toHaveLength(1);
+    const [rawBytes, compressedBytes] = observed[0]!;
+    expect(rawBytes).toBe(Buffer.byteLength(raw));
+    expect(compressedBytes).toBe(
+      Buffer.from(await seen[0]!.arrayBuffer()).byteLength,
+    );
+    expect(compressedBytes).toBeLessThan(rawBytes);
+  });
+
+  it("observer 抛错不影响压缩请求", async () => {
+    const { fetch, seen } = captureFetch();
+    const wrapped = createRequestBodyZstdFetch(fetch, {
+      onCompressed: () => {
+        throw new Error("observer exploded");
+      },
+    });
+
+    await wrapped("https://provider.test/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify(PAYLOAD),
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.headers.get("content-encoding")).toBe("zstd");
+  });
+
+  it("GET / 空请求体不调用 observer", async () => {
+    const { fetch } = captureFetch();
+    let calls = 0;
+    const wrapped = createRequestBodyZstdFetch(fetch, {
+      onCompressed: () => {
+        calls += 1;
+      },
+    });
+
+    await wrapped("https://provider.test/v1/models", { method: "GET" });
+    await wrapped("https://provider.test/v1/x", { method: "POST" });
+
+    expect(calls).toBe(0);
+  });
 });

@@ -46,6 +46,7 @@ import type {
   SessionInputDelivery,
   SessionInputRecord,
   SessionInputStatus,
+  SessionRequestMetricsRow,
   SessionTaskLinkRecord,
   SessionRevert,
   SessionStorePort,
@@ -852,6 +853,12 @@ export class SqliteSessionStore
 
   async queryTaskUsage(input: TaskUsageQueryInput): Promise<TaskUsageQueryResult> {
     return usageRepository.queryTaskUsage(this.db, input);
+  }
+
+  async querySessionRequestMetrics(input: {
+    sessionID: SessionId;
+  }): Promise<SessionRequestMetricsRow[]> {
+    return usageRepository.querySessionRequestMetrics(this.db, input);
   }
 
   async recordInputHistory(input: {
