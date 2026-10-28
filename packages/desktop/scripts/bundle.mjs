@@ -706,6 +706,18 @@ function verifyPackagedRuntimeDependencies(os, arch) {
   }
 }
 
+/**
+ * 打包前置步骤的唯一来源。desktop 的 `build` 脚本内部会先跑一遍 prepare:runtime-assets，
+ * 所以显式跑过 prepare 之后只能调 build:no-runtime-assets，否则同一轮打包会把整条资源准备链
+ * 跑两遍（CI 实测约 93 s/次）；这也让 --skip-prepare 真正跳过资源准备。
+ */
+export function resolveDesktopBuildSteps({ skipPrepare, skipBuild }) {
+  const steps = [];
+  if (!skipPrepare) steps.push("prepare:runtime-assets");
+  if (!skipBuild) steps.push("build:no-runtime-assets");
+  return steps;
+}
+
 async function main() {
   const { os, arch, skipPrepare, skipBuild, dryRun } = parseArgs(process.argv.slice(2));
   const buildArgs = [
@@ -732,12 +744,8 @@ async function main() {
     process.exit(0);
   }
 
-  if (!skipPrepare) {
-    run(pnpmCommand, ["prepare:runtime-assets"], buildEnv);
-  }
-
-  if (!skipBuild) {
-    run(pnpmCommand, ["build"], buildEnv);
+  for (const script of resolveDesktopBuildSteps({ skipPrepare, skipBuild })) {
+    run(pnpmCommand, [script], buildEnv);
   }
 
   await runTimedAsync("bundle:electron-builder", () =>

@@ -56,6 +56,9 @@
    用于后续按实测决定是否继续优化（例如 4 个目标并行 stage）。该格式由
    `src/packaging/stepTimer.ts` 唯一实现，输出裸行不加 `[stage]` 前缀；父步骤
    （`remote-assets:<target>`）的耗时包含子进程内部的 `stage:*` 耗时，各行不可相加。
+7. 同一轮桌面打包内 `prepare:runtime-assets` 只执行一次：`packages/desktop` 的 `build` 脚本自身会先跑
+   一遍 prepare，因此 `bundle.mjs` 显式跑过 prepare 后只调 `build:no-runtime-assets`
+   （CI 实测每次 prepare 约 93 s）；`--skip-prepare` 因此才真正跳过资源准备。
 
 ## 所有者与接口
 
@@ -68,6 +71,7 @@
 - 组件归档开关所有者：`stageRemoteAssetsCli` 的 `--skip-component-archives`（透传给每个目标）。
 - 计时口径所有者：`packages/zcode-server-cli/src/packaging/stepTimer.ts`，由 `stageRemoteAssetsCli`
   与 `stageCli` 共用。
+- 桌面打包前置步骤所有者：`packages/desktop/scripts/bundle.mjs` 的 `resolveDesktopBuildSteps`。
 
 ## 事件顺序
 
@@ -97,3 +101,4 @@ push(my_dev)
 5. remote assets 链路日志包含每个目标与每个阶段的 `[ci][timer] … duration_ms=`。
 6. `release` job 在任一构建 job 失败时不会发布（`needs` 门禁），`fail_on_unmatched_files: true`
    仍能在产物缺失时失败。
+7. 桌面 job 日志里 `prepare:agent-bundle` 的计时只出现一次；带 `--skip-prepare` 时完全不出现。
